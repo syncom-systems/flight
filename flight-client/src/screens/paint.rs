@@ -201,29 +201,47 @@ fn touches(line: &Rect, tile: &Rect) -> bool {
     along_side || along_end
 }
 
+/// The columns (start, end exclusive; terminal-relative) each tab of a bar occupies: its label
+/// with a space either side, cut off at the end of the strip. What is painted and what a click
+/// on the strip means are the same spans.
+pub(crate) fn tab_spans(bar: &TabBar, label: &dyn Fn(&SurfaceId) -> String) -> Vec<(u16, u16)> {
+    let end = bar.area.right();
+    let mut x = bar.area.x;
+    let mut spans = Vec::with_capacity(bar.tabs.len());
+    for surface in &bar.tabs {
+        let width = label(surface).chars().count().saturating_add(2);
+        let width = u16::try_from(width).unwrap_or(u16::MAX);
+        let stop = x.saturating_add(width).min(end);
+        spans.push((x.min(end), stop));
+        x = stop;
+    }
+    spans
+}
+
 fn paint_tabs(buf: &mut Buffer, bar: &TabBar, label: &dyn Fn(&SurfaceId) -> String, theme: &Theme) {
     let y = buf.area.y.saturating_add(bar.area.y);
-    let mut x = buf.area.x.saturating_add(bar.area.x);
     let end = buf
         .area
         .x
         .saturating_add(bar.area.right())
         .min(buf.area.right());
-    for col in x..end {
+    for col in buf.area.x.saturating_add(bar.area.x)..end {
         let cell = &mut buf[(col, y)];
         cell.reset();
         cell.set_style(theme.tab);
     }
-    for (i, surface) in bar.tabs.iter().enumerate() {
+    for (i, (surface, (from, to))) in bar.tabs.iter().zip(tab_spans(bar, label)).enumerate() {
         let style = if i == bar.active {
             theme.tab_active
         } else {
             theme.tab
         };
         let text = format!(" {} ", label(surface));
+        let mut x = buf.area.x.saturating_add(from);
+        let stop = buf.area.x.saturating_add(to).min(end);
         for ch in text.chars() {
-            if x >= end {
-                return;
+            if x >= stop {
+                break;
             }
             let cell = &mut buf[(x, y)];
             cell.set_symbol(ch.encode_utf8(&mut [0u8; 4]))

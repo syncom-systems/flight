@@ -26,7 +26,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 
-const HINT: &str = "Ctrl-Space: | or - split, t tab, x close, n/p tab, h j k l or o focus, < > + _ resize, a s show agent or shell, q leave";
+const HINT: &str = "Ctrl-Space: | or - split, t tab, x close, n/p or click a tab, h j k l or o focus, < > + _ resize, a s show agent or shell, q leave";
 /// A nudge of a surface's share, in percent of the whole.
 const NUDGE: i32 = 10;
 /// How long input that cannot move holds the keyboard before it is given up, counted.
@@ -692,9 +692,13 @@ impl<H: SurfaceHost> Run<H> {
     fn take_mouse(&mut self, event: super::mouse_event::MouseEvent) {
         let solved = self.solved();
         let tiles = &self.tiles;
-        let routed = self
-            .pointer
-            .route(event, &solved, &|s| tiles.get(s).map(|t| t.model.modes()));
+        let label = &self.cfg.label;
+        let routed = self.pointer.route(
+            event,
+            &solved,
+            &|s| tiles.get(s).map(|t| t.model.modes()),
+            &|s| label(s),
+        );
         match routed {
             Some(Routed::Focus(surface)) => {
                 if let Ok(layout) = self.layout.focus_on(&surface) {
