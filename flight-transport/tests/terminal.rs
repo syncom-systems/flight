@@ -44,6 +44,8 @@ struct Rig {
     next_request: u64,
     lease_ttl: u64,
     leases: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>,
+    /// More panes, for the rigs that ask for them.
+    others: Vec<(String, u32)>,
 }
 
 fn tmux_available() -> bool {
@@ -67,6 +69,17 @@ impl Rig {
         command: &str,
         stall: Duration,
         ttl: u64,
+    ) -> (Self, String, u32) {
+        Self::start_limited(tag, command, stall, ttl, None).await
+    }
+
+    /// As `start_full`, with the node's own limit on open terminals set when `node_limit` is.
+    async fn start_limited(
+        tag: &str,
+        command: &str,
+        stall: Duration,
+        ttl: u64,
+        node_limit: Option<usize>,
     ) -> (Self, String, u32) {
         let serial = ONE_AT_A_TIME.lock().await;
         let tmux_name = format!("flight-test-{}-{tag}", std::process::id());
@@ -92,6 +105,26 @@ impl Rig {
             .stdout;
         let (pane, pid) = listing.trim().split_once(' ').unwrap();
         let (pane, pid) = (pane.to_owned(), pid.parse::<u32>().unwrap());
+        let others: Vec<(String, u32)> = if node_limit.is_some() {
+            for _ in 0..2 {
+                tmux.runner()
+                    .run(&["split-window", "-d", "-t", "work:", command])
+                    .unwrap();
+            }
+            let listing = tmux
+                .runner()
+                .run(&["list-panes", "-t", "work:", "-F", "#{pane_id} #{pane_pid}"])
+                .unwrap()
+                .stdout;
+            listing
+                .lines()
+                .filter_map(|l| l.split_once(' '))
+                .filter(|(id, _)| *id != pane)
+                .map(|(id, pid)| (id.to_owned(), pid.parse::<u32>().unwrap()))
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         let mut servers = TmuxServers::new();
         servers.add(
@@ -109,7 +142,7 @@ impl Rig {
         };
         let (server, orch, addr) = start_with_core(trust, None, core).await;
         let node_fp = node_id.fingerprint().clone();
-        let link = node_link_stalling(&node_id, &addr, &orch, Arc::new(servers), stall);
+        let link = node_link_limited(&node_id, &addr, &orch, Arc::new(servers), stall, node_limit);
         let (stop, stop_rx) = watch::channel(false);
         let runner = link.clone();
         let node_runtime = tokio::runtime::Builder::new_multi_thread()
@@ -122,8 +155,14 @@ impl Rig {
             node_status(&server, &node_fp) == Some(NodeStatusCode::Online as i32)
         })
         .await;
-        link.observe(vec![round(1, vec![obs(&pane, pid, PERMIT_SCREEN)])]);
-        wait_until("pane replicated", || pane_count(&server, &node_fp) == 1).await;
+        let mut observed = vec![obs(&pane, pid, PERMIT_SCREEN)];
+        observed.extend(others.iter().map(|(id, pid)| obs(id, *pid, PERMIT_SCREEN)));
+        let wanted = observed.len();
+        link.observe(vec![round(1, observed)]);
+        wait_until("pane replicated", || {
+            pane_count(&server, &node_fp) == wanted
+        })
+        .await;
         let mut ui = UiClient::connect(&addr, &ui_id, &orch).await.unwrap();
         ui.send(UiRequest {
             body: Some(ui_request_body::Body::Subscribe(Subscribe {})),
@@ -149,6 +188,7 @@ impl Rig {
                 next_request: 100,
                 lease_ttl: ttl,
                 leases: std::sync::Mutex::new(Vec::new()),
+                others,
             },
             pane,
             pid,
@@ -936,4 +976,52 @@ async fn a_terminal_nobody_reads_does_not_starve_another_on_the_same_connection(
         "took {:?}",
         started.elapsed()
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_node_at_its_own_terminal_limit_refuses_the_next_and_takes_it_when_one_ends() {
+    if !tmux_available() {
+        return;
+    }
+    // The orchestrator's limits are the defaults (8 per interface); the node's own is 2.
+    let (mut rig, pane, pid) =
+        Rig::start_limited("nodelimit", "cat", Duration::from_secs(30), 15, Some(2)).await;
+    let first = rig.open(&pane, pid).await.expect("first terminal opens");
+    let first_end = rig.attach(&first).await;
+    let [(other, other_pid), (third, third_pid)] = rig.others.clone().try_into().unwrap();
+    let second = rig
+        .open(&other, other_pid)
+        .await
+        .expect("second terminal opens");
+    let _second_end = rig.attach(&second).await;
+    wait_until("two terminals open", || rig.server.terminals_open() == 2).await;
+    assert_eq!(
+        rig.open(&third, third_pid).await,
+        Err(ErrorKindCode::Busy as i32),
+        "the node's own limit, not the orchestrator's, refuses the third"
+    );
+    assert_eq!(
+        rig.clients().len(),
+        2,
+        "nothing was started for the refused one"
+    );
+    // One ends: its slot is free again.
+    first_end
+        .send(TerminalFrame {
+            body: Some(terminal_body::Body::Close(TerminalClose {})),
+        })
+        .await
+        .unwrap();
+    wait_until("one terminal left", || rig.server.terminals_open() == 1).await;
+    let mut again = None;
+    for _ in 0..50 {
+        match rig.open(&third, third_pid).await {
+            Ok(id) => {
+                again = Some(id);
+                break;
+            }
+            Err(_) => tokio::time::sleep(Duration::from_millis(100)).await,
+        }
+    }
+    assert!(again.is_some(), "the freed slot is usable");
 }

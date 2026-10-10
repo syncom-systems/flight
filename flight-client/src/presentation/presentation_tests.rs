@@ -31,6 +31,11 @@ struct FakeHost {
     refuse: Mutex<Vec<SurfaceChoice>>,
     /// The next this many opens fail as unreachable.
     unavailable: Mutex<usize>,
+    /// What was asked to be removed, and what the workspace is to answer.
+    removed: Mutex<Vec<(SurfaceChoice, Option<SurfaceId>)>>,
+    removal_answer: Mutex<Result<(), String>>,
+    /// How long the workspace takes to answer.
+    removal_delay: Mutex<Duration>,
 }
 
 fn binding(choice: SurfaceChoice) -> Binding {
@@ -90,6 +95,17 @@ impl SurfaceHost for FakeHost {
             expect: None,
         })
         .await
+    }
+
+    async fn remove(
+        &self,
+        choice: SurfaceChoice,
+        surface: Option<SurfaceId>,
+    ) -> Result<(), String> {
+        self.removed.lock().unwrap().push((choice, surface));
+        let delay = *self.removal_delay.lock().unwrap();
+        tokio::time::sleep(delay).await;
+        self.removal_answer.lock().unwrap().clone()
     }
 
     fn renew(&self, _attachment: &[u8]) -> Result<(), String> {
@@ -157,6 +173,9 @@ fn start_with_surfaces(
         attached,
         refuse: Mutex::new(Vec::new()),
         unavailable: Mutex::new(unavailable),
+        removed: Mutex::new(Vec::new()),
+        removal_answer: Mutex::new(Ok(())),
+        removal_delay: Mutex::new(Duration::ZERO),
     });
     let notices = Arc::new(Mutex::new(Vec::new()));
     let said = notices.clone();
@@ -927,4 +946,192 @@ async fn a_tab_clicked_while_the_shown_surface_is_down_is_shown_and_the_downed_o
     tokio::time::sleep(Duration::from_secs(2)).await;
     let again = rig.remote().await;
     assert_eq!(again.choice, Agent);
+}
+
+/// An agent, the shell and a second shell `s-3` called `logs`.
+fn three_surfaces() -> WorkspaceSurfaces {
+    let panes = vec![
+        pane(
+            "s-1",
+            flight_ui::SurfaceKind::Agent(flight_classify::AgentKind::Claude),
+            "agent",
+            1,
+        ),
+        pane("s-2", flight_ui::SurfaceKind::Shell, "shell", 2),
+        pane("s-3", flight_ui::SurfaceKind::Shell, "logs", 3),
+    ];
+    let snapshot = snapshot(panes);
+    WorkspaceSurfaces::of(&flight_ui::workspaces(&snapshot, "")[0])
+}
+
+/// The notices said so far.
+fn said(rig: &Rig) -> Vec<String> {
+    rig.notices.lock().unwrap().clone()
+}
+
+#[tokio::test(start_paused = true)]
+async fn removing_a_shell_asks_twice_and_then_only_that_surface_goes() {
+    let layout = side_by_side()
+        .replace(&id("shell"), id("s-3"))
+        .unwrap()
+        .focus_on(&id("s-3"))
+        .unwrap();
+    let mut rig = start_with_surfaces(layout, (121, 24), 0, None, &three_surfaces());
+    let (mut a, mut b) = (rig.remote().await, rig.remote().await);
+    // The first X only asks.
+    rig.type_(b"\x00X").await;
+    assert!(rig.host.removed.lock().unwrap().is_empty());
+    assert!(said(&rig).iter().any(|n| n.contains("again removes")));
+    // Anything else in between cancels the question.
+    rig.type_(b"x").await;
+    rig.type_(b"\x00X").await;
+    assert!(rig.host.removed.lock().unwrap().is_empty());
+    // The second X, straight after the first, removes the focused shell by its own id.
+    rig.type_(b"\x00X").await;
+    assert_eq!(
+        *rig.host.removed.lock().unwrap(),
+        [(Shell, Some(id("s-3")))]
+    );
+    assert!(said(&rig).iter().any(|n| n.contains("removed")));
+    // The other tile is untouched and still attached; the removed one was let go.
+    let (agent, logs) = if a.choice == Agent {
+        (&mut a, &mut b)
+    } else {
+        (&mut b, &mut a)
+    };
+    assert!(received(logs).await.contains(&ToRemote::Close));
+    assert!(!received(agent).await.contains(&ToRemote::Close));
+    // The keyboard is where it can be used: typing reaches the agent.
+    rig.type_(b"hi").await;
+    assert_eq!(data(&received(agent).await), b"hi");
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_agent_and_the_only_shown_surface_are_not_removed() {
+    let mut rig = start_with_surfaces(
+        Layout::single(id("agent")),
+        (80, 24),
+        0,
+        None,
+        &three_surfaces(),
+    );
+    let _agent = rig.remote().await;
+    rig.type_(b"\x00X\x00X").await;
+    assert!(rig.host.removed.lock().unwrap().is_empty());
+    assert!(said(&rig).iter().any(|n| n.contains("only a shell")));
+    // A shell shown alone is not removed either: something must stay to show.
+    let mut rig = start_with_surfaces(
+        Layout::single(id("shell")),
+        (80, 24),
+        0,
+        None,
+        &three_surfaces(),
+    );
+    let _shell = rig.remote().await;
+    rig.type_(b"\x00X\x00X").await;
+    assert!(rig.host.removed.lock().unwrap().is_empty());
+    assert!(said(&rig)
+        .iter()
+        .any(|n| n.contains("show another surface first")));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_refused_removal_changes_nothing_and_says_why() {
+    let layout = side_by_side();
+    let mut rig = start(layout, (121, 24));
+    let (mut a, mut b) = (rig.remote().await, rig.remote().await);
+    *rig.host.removal_answer.lock().unwrap() = Err("the workspace is gone".to_owned());
+    rig.type_(b"\x00s").await;
+    rig.type_(b"\x00X\x00X").await;
+    assert_eq!(rig.host.removed.lock().unwrap().len(), 1);
+    assert!(said(&rig)
+        .iter()
+        .any(|n| n.contains("not removed: the workspace is gone")));
+    assert!(!received(&mut a).await.contains(&ToRemote::Close));
+    assert!(!received(&mut b).await.contains(&ToRemote::Close));
+    // And the session carries on.
+    rig.type_(b"ok").await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_surface_being_removed_ending_does_not_end_the_session() {
+    // The shell is the only tile showing (the agent is in a hidden tab); its process ending
+    // before the workspace has answered must not be taken as the end of everything.
+    let layout = Layout::single(id("agent"))
+        .add_tab(&id("agent"), id("shell"))
+        .unwrap()
+        .focus_on(&id("shell"))
+        .unwrap();
+    let mut rig = start(layout, (80, 24));
+    *rig.host.removal_delay.lock().unwrap() = Duration::from_secs(1);
+    let shell = rig.remote().await;
+    rig.type_(b"\x00X\x00X").await;
+    shell
+        .to_session
+        .send(FromRemote::Exit {
+            reason: ExitReasonCode::Unspecified,
+            status: 0,
+        })
+        .await
+        .unwrap();
+    rig.settle().await;
+    assert!(!rig.outcome.is_finished(), "the session goes on");
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    // The agent comes into view once the shell is gone from the layout.
+    let agent = rig.remote().await;
+    assert_eq!(agent.choice, Agent);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_second_shell_handed_on_is_its_own_tile_and_not_the_workspaces_shell() {
+    let surfaces = three_surfaces();
+    // The attachment is the pane of `s-3` (pane %3), a shell that is not the workspace's first.
+    let (mut handover, mut logs) = handed(Shell, (121, 24), b"");
+    handover.attachment.binding.pane = PaneRef {
+        host: HostId::new("h"),
+        server: ServerId::new("s"),
+        pane: PaneId::new("%3"),
+    };
+    let layout = side_by_side()
+        .replace(&id("shell"), id("s-3"))
+        .unwrap()
+        .focus_on(&id("agent"))
+        .unwrap();
+    let mut rig = start_with_surfaces(layout, (121, 24), 0, Some(handover), &surfaces);
+    // The agent is attached; the handed shell is the `s-3` tile and is not attached again.
+    let agent = rig.remote().await;
+    assert_eq!(agent.choice, Agent);
+    rig.settle().await;
+    assert!(rig.remotes.try_recv().is_err());
+    rig.type_(b"\x00l").await;
+    rig.type_(b"to-the-logs").await;
+    assert_eq!(data(&received(&mut logs).await), b"to-the-logs");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_second_shell_the_user_was_looking_at_takes_the_shells_place_and_the_keyboard() {
+    let (mut handover, mut logs) = handed(Shell, (121, 24), b"typed-ahead");
+    handover.attachment.binding.pane = PaneRef {
+        host: HostId::new("h"),
+        server: ServerId::new("s"),
+        pane: PaneId::new("%3"),
+    };
+    // The usual two, with the keyboard on the agent: the second shell is neither.
+    let mut rig = start_with_surfaces(
+        side_by_side(),
+        (121, 24),
+        0,
+        Some(handover),
+        &three_surfaces(),
+    );
+    let agent = rig.remote().await;
+    assert_eq!(agent.choice, Agent);
+    rig.settle().await;
+    assert!(
+        rig.remotes.try_recv().is_err(),
+        "the first shell was not attached in its place"
+    );
+    assert_eq!(data(&received(&mut logs).await), b"typed-ahead");
+    rig.type_(b"more").await;
+    assert_eq!(data(&received(&mut logs).await), b"more");
 }

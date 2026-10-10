@@ -30,6 +30,7 @@ fn dashboard_action(key: KeyEvent) -> Option<Action> {
         KeyCode::Enter => Some(Action::Switch),
         KeyCode::Char('a') => Some(Action::Open(SurfaceChoice::Agent)),
         KeyCode::Char('s') => Some(Action::Open(SurfaceChoice::Shell)),
+        KeyCode::Char('S') => Some(Action::AddShell),
         KeyCode::Char('r') => Some(Action::Refresh),
         KeyCode::Char('n') => Some(Action::NewSession),
         // These act only on a selected saved workspace.
@@ -137,6 +138,7 @@ mod tests {
             dash(KeyCode::Char('s')),
             Some(Action::Open(SurfaceChoice::Shell))
         );
+        assert_eq!(dash(KeyCode::Char('S')), Some(Action::AddShell));
         assert_eq!(
             dash(KeyCode::Char('x')),
             Some(Action::SavedOp(SavedOp::Remove))

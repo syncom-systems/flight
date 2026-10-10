@@ -23,7 +23,12 @@ pub fn workspaces(s: &UiSnapshot, filter: &str) -> Vec<Workspace> {
     all.into_iter().map(|(_, w)| w).collect()
 }
 
-/// The workspaces of one host, with the surfaces of each (an agent first, then a shell).
+/// The number in a tmux pane id (`%12`), or the largest if there is none.
+fn pane_number(id: &str) -> u64 {
+    id.trim_start_matches('%').parse().unwrap_or(u64::MAX)
+}
+
+/// The workspaces of one host, with the surfaces of each (an agent first, then shells oldest first).
 fn host_workspaces(host: &HostView) -> Vec<Workspace> {
     let mut by_id: BTreeMap<&WorkspaceId, Vec<&PaneView>> = BTreeMap::new();
     for pane in &host.panes {
@@ -34,7 +39,15 @@ fn host_workspaces(host: &HostView) -> Vec<Workspace> {
         .filter_map(|(id, panes)| {
             let first = panes.first()?;
             let mut surfaces: Vec<Surface> = panes.iter().map(|p| Surface::from(*p)).collect();
-            surfaces.sort_by_key(|s| (!s.kind.is_agent(), s.id.clone()));
+            // Oldest first: a backend numbers its panes as it makes them, so the surface that is
+            // "the shell" stays the same one when another is added beside it.
+            surfaces.sort_by_key(|s| {
+                (
+                    !s.kind.is_agent(),
+                    pane_number(s.pane.pane_ref.pane.as_str()),
+                    s.id.clone(),
+                )
+            });
             Some(Workspace {
                 id: id.clone(),
                 name: first.session.clone(),

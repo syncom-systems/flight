@@ -37,6 +37,36 @@ fn create_surface(id: u64, ws: &str) -> UiRequest {
                 kind: Some(ck::Kind::CreateSurface(ck::CreateSurface {
                     workspace_id: ws.into(),
                     kind: SurfaceKindCode::Shell as i32,
+                    another: false,
+                })),
+            }),
+        })),
+    }
+}
+
+fn another_surface(id: u64, ws: &str) -> UiRequest {
+    UiRequest {
+        body: Some(ui_request_body::Body::Command(Request {
+            request_id: id,
+            command: Some(Command {
+                kind: Some(ck::Kind::CreateSurface(ck::CreateSurface {
+                    workspace_id: ws.into(),
+                    kind: SurfaceKindCode::Shell as i32,
+                    another: true,
+                })),
+            }),
+        })),
+    }
+}
+
+fn remove_surface(id: u64, ws: &str, surface: &str) -> UiRequest {
+    UiRequest {
+        body: Some(ui_request_body::Body::Command(Request {
+            request_id: id,
+            command: Some(Command {
+                kind: Some(ck::Kind::RemoveSurface(ck::RemoveSurface {
+                    workspace_id: ws.into(),
+                    surface_id: surface.into(),
                 })),
             }),
         })),
@@ -172,6 +202,35 @@ fn a_node_that_cannot_make_surfaces_is_told_nothing() {
     send(&mut w, create_surface(1, "w-a"));
     assert_eq!(error_kinds(&w), vec![ErrorKindCode::Unsupported as i32]);
     assert!(w.forwarded.is_empty());
+}
+
+#[test]
+fn another_surface_and_a_removal_go_to_the_workspaces_host_and_only_to_a_node_that_knows_them() {
+    let mut w = two_workspaces();
+    send(&mut w, another_surface(1, "w-b"));
+    send(&mut w, remove_surface(2, "w-a", "s-a1"));
+    let hosts: Vec<_> = w.forwarded.iter().map(|(h, _)| h.as_str()).collect();
+    assert_eq!(hosts, ["node-b", "node-a"], "routed by the workspace alone");
+    assert!(error_kinds(&w).is_empty());
+}
+
+#[test]
+fn a_node_without_multiple_surfaces_is_never_asked_for_another_or_a_removal() {
+    let mut w = simple_world();
+    w.subscribe(UiId(1));
+    // Knows surfaces, but only the one-shell rule.
+    w.connect_offering(0, &["create_surface_v1"]);
+    w.observe(
+        0,
+        round(1, vec![surface_obs("%1", 10, "w-a", "s-a1", "agent")]),
+    );
+    send(&mut w, another_surface(1, "w-a"));
+    send(&mut w, remove_surface(2, "w-a", "s-a1"));
+    assert_eq!(error_kinds(&w), vec![ErrorKindCode::Unsupported as i32; 2]);
+    assert!(w.forwarded.is_empty());
+    // The plain request is still carried.
+    send(&mut w, create_surface(3, "w-a"));
+    assert_eq!(w.forwarded.len(), 1);
 }
 
 #[test]

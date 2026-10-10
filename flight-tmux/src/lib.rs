@@ -14,6 +14,8 @@ mod new_session;
 mod pane_guard;
 mod pane_info;
 mod parse;
+mod remove_error;
+mod remove_window;
 mod runner;
 mod surface_mark;
 mod view;
@@ -29,6 +31,7 @@ pub use new_session::{Launch, NewSession};
 pub use pane_guard::GuardError;
 pub use pane_info::PaneInfo;
 pub use parse::{parse_panes_checked, parse_panes_output, PANE_FORMAT};
+pub use remove_error::RemoveError;
 pub use runner::{tmux_args, SystemRunner, TmuxOutput, TmuxRunner};
 pub use surface_mark::{
     ConfigMark, SurfaceMark, SurfaceTag, CONFIG_OPTION, CONFIG_SURFACE_OPTION, SURFACE_ID_OPTION,

@@ -37,7 +37,9 @@ pub use node_session::{NodeSession, SessionOutput, ADVERTISED_CAPABILITIES};
 pub use observer::{ControlLink, ControlSkipObserver, PaneObserver, SequentialObserver};
 pub use persistence::{SavedAction, SavedActionRequest, WorkspacePersistence};
 pub use round::{PaneObservation, Round, ServerOutcome};
-pub use session_create::{NewSurface, Program, SessionEnv, SessionRequest, SurfaceRequest};
+pub use session_create::{
+    NewSurface, Program, SessionEnv, SessionRequest, SurfaceRemoval, SurfaceRequest,
+};
 pub use terminal::{
     tmux_attach_command, HangUp, OpenedTerminal, Redraw, TerminalProcess, TerminalSpec,
 };

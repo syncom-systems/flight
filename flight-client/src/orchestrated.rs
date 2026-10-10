@@ -12,7 +12,7 @@ use flight_proto::{
     FleetImage, PaneRefMsg, ProgramCode, Request, SavedActionCode, Step, Subscribe,
     SurfaceKindCode, TerminalLease, UiEvent, UiRequest,
 };
-use flight_state::PaneRef;
+use flight_state::{PaneRef, SurfaceId};
 use flight_transport::{TerminalConnector, UiClient};
 use flight_trust::{ConnectionConfig, Fingerprint, Identity, TrustError};
 use flight_ui::{
@@ -203,6 +203,30 @@ impl OrchestratedBackend {
         )
     }
 
+    /// Take one surface away from a workspace, named by its own id. Only the surface goes.
+    pub(crate) async fn remove_surface(
+        &self,
+        workspace: &WorkspaceKey,
+        surface: &SurfaceId,
+    ) -> Result<(), String> {
+        if !self.connected() {
+            return Err("not connected to the orchestrator".to_owned());
+        }
+        let kind = ck::Kind::RemoveSurface(ck::RemoveSurface {
+            workspace_id: workspace.workspace.as_str().to_owned(),
+            surface_id: surface.as_str().to_owned(),
+        });
+        call(&self.inner.requests, kind, CREATE_TIMEOUT)
+            .await
+            .map(drop)
+            .map_err(|f| match f.kind {
+                Some(ErrorKindCode::Unsupported) => {
+                    "that node cannot remove a surface (too old, or not a shell)".to_owned()
+                }
+                _ => f.message,
+            })
+    }
+
     /// Ask the orchestrator for a terminal onto `pane`, guarded by the process the caller saw.
     pub(crate) async fn request_terminal(
         &self,
@@ -337,6 +361,7 @@ impl Backend for OrchestratedBackend {
                 SurfaceChoice::Shell => SurfaceKindCode::Shell,
                 SurfaceChoice::Agent => SurfaceKindCode::Agent,
             } as i32,
+            another: request.another,
         });
         self.inner
             .runtime

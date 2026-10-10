@@ -267,6 +267,36 @@ impl WorkspacePersistence {
         })
     }
 
+    /// Forget a shell taken away from a running workspace, if that workspace is a saved one: it
+    /// is named by the saved key its window carried, or failing that by the runtime id last
+    /// seen for it. Nothing else of the saved workspace changes.
+    pub(crate) fn forget_surface(
+        &self,
+        workspace_config: &str,
+        workspace_id: &str,
+        surface_id: &str,
+        surface_config: &str,
+    ) -> Result<(), String> {
+        self.mutate(|doc| {
+            let Some(profile) = doc.active_mut() else {
+                return false;
+            };
+            let Some(w) = profile.workspaces.iter_mut().find(|w| {
+                (!workspace_config.is_empty() && w.key.as_str() == workspace_config)
+                    || w.last_workspace_id.as_deref() == Some(workspace_id)
+            }) else {
+                return false;
+            };
+            let before = w.surfaces.len();
+            w.surfaces.retain(|s| {
+                s.kind != SurfaceKind::Shell
+                    || !((!surface_config.is_empty() && s.key.as_str() == surface_config)
+                        || s.last_surface_id.as_deref() == Some(surface_id))
+            });
+            w.surfaces.len() != before
+        })
+    }
+
     /// Forget a saved workspace. Only the reference goes: no directory, repository or running
     /// process is touched.
     pub fn remove(&self, key: &ConfigKey) -> Result<(), String> {

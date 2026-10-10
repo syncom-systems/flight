@@ -81,6 +81,7 @@ fn command(key: u8) -> Option<Command> {
         b'<' => Command::Grow(Axis::Across, false),
         b'+' => Command::Grow(Axis::Down, true),
         b'_' => Command::Grow(Axis::Down, false),
+        b'X' => Command::RemoveSurface,
         b'a' => Command::ShowHere(Shown::Agent),
         b's' => Command::ShowHere(Shown::Shell),
         _ => return None,

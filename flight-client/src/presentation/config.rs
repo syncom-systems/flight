@@ -6,7 +6,7 @@ use super::target::Target;
 use super::workspace_surfaces::WorkspaceSurfaces;
 use crate::session::{FromRemote, OpenFailure, Reattach};
 use flight_present::Style;
-use flight_state::SurfaceId;
+use flight_state::{PaneRef, SurfaceId};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,6 +15,8 @@ use flight_ui::SurfaceChoice;
 
 /// What a surface of a layout is, for the host.
 pub type Resolve = Arc<dyn Fn(&SurfaceId) -> Option<Target> + Send + Sync>;
+/// What a layout calls the surface in a pane.
+pub type NameOf = Arc<dyn Fn(&PaneRef) -> Option<SurfaceId> + Send + Sync>;
 
 /// How a presentation runs.
 pub struct PresentationConfig {
@@ -30,6 +32,8 @@ pub struct PresentationConfig {
     pub surfaces: Vec<SurfaceId>,
     /// What each surface is, for the host. `None`: it cannot be attached (shown as unavailable).
     pub resolve: Resolve,
+    /// What a layout calls the surface in a pane, when the pane is one the workspace has.
+    pub name_of: NameOf,
     /// The name shown on a tab.
     pub label: Arc<dyn Fn(&SurfaceId) -> String + Send + Sync>,
     /// The layout rules (minimum tile size).
@@ -51,7 +55,7 @@ impl PresentationConfig {
         say: Arc<dyn Fn(&str) + Send + Sync>,
         surfaces: &WorkspaceSurfaces,
     ) -> Self {
-        let (known, labelled) = (surfaces.clone(), surfaces.clone());
+        let (known, labelled, named) = (surfaces.clone(), surfaces.clone(), surfaces.clone());
         Self {
             input_limit: 64 * 1024,
             open_timeout: Duration::from_secs(15),
@@ -60,6 +64,7 @@ impl PresentationConfig {
             reattach_delays: Reattach::default_delays(),
             surfaces: surfaces.names(),
             resolve: Arc::new(move |s| known.target(s)),
+            name_of: Arc::new(move |p| named.name_of(p)),
             label: Arc::new(move |s| labelled.label(s)),
             style: Style::default(),
             theme: Theme::default(),

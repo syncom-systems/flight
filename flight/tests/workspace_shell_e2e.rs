@@ -565,3 +565,89 @@ fn another_window_of_the_workspace_can_be_shown_beside_the_agent_and_the_shell()
         "{saved}"
     );
 }
+
+#[test]
+fn a_second_shell_is_added_on_request_has_its_own_keys_and_is_removed_alone() {
+    let mut rig = boot("shells");
+    workspace_with_shell(&mut rig);
+    let windows = |rig: &Rig| rig.tmux(&["list-windows", "-t", "=quick:", "-F", "#{window_name}"]);
+    assert_eq!(windows(&rig).lines().count(), 2);
+    // Back to the dashboard, and ask for another shell: it is only a question until answered.
+    rig.send(b"\x00q");
+    wait("the dashboard again", || {
+        rig.seen("Workspaces") && rig.clients() == 0
+    });
+    rig.send(b"S");
+    wait("the offer", || rig.seen("Add another shell to quick"));
+    rig.send(b"\x1b");
+    wait("the offer to close", || {
+        !rig.seen("Add another shell to quick")
+    });
+    assert_eq!(windows(&rig).lines().count(), 2, "nothing was created");
+    rig.send(b"S");
+    wait("the offer", || rig.seen("Add another shell to quick"));
+    rig.send(b"\r");
+    // It is made beside the others and opened.
+    wait("the second shell on screen", || {
+        rig.clients() == 1 && windows(&rig).contains("shell-2")
+    });
+    assert_eq!(windows(&rig).lines().count(), 3);
+    wait("its prompt", || pane(&rig, "shell-2").contains('❯'));
+    rig.send(b"..ONLY-IN-THE-SECOND");
+    wait("the second shell got its keys", || {
+        pane(&rig, "shell-2").contains("ONLY-IN-THE-SECOND")
+    });
+    assert!(!pane(&rig, "shell").contains("ONLY-IN-THE-SECOND"));
+    assert!(!pane(&rig, "agent").contains("ONLY-IN-THE-SECOND"));
+
+    // Side by side: the shell the user is looking at stays on screen, beside the agent.
+    let second_pane = rig.tmux(&[
+        "display-message",
+        "-p",
+        "-t",
+        "=quick:shell-2",
+        "#{pane_id}",
+    ]);
+    rig.send(b"\x00v");
+    wait("two clients", || rig.clients() == 2);
+    rig.send(b"-KEPT");
+    wait("still the same shell", || {
+        pane(&rig, "shell-2").contains("ONLY-IN-THE-SECOND-KEPT")
+    });
+    assert_eq!(
+        rig.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            "=quick:shell-2",
+            "#{pane_id}"
+        ]),
+        second_pane,
+        "the same process"
+    );
+
+    // Remove it: asked twice, and then only that window goes.
+    let agent_pid = rig.tmux(&["display-message", "-p", "-t", "=quick:agent", "#{pane_pid}"]);
+    let shell_pid = rig.tmux(&["display-message", "-p", "-t", "=quick:shell", "#{pane_pid}"]);
+    rig.send(b"\x00X");
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(windows(&rig).contains("shell-2"), "one X only asks");
+    rig.send(b"\x00X");
+    wait("the second shell to be gone", || {
+        !windows(&rig).contains("shell-2")
+    });
+    assert_eq!(windows(&rig).lines().count(), 2);
+    assert_eq!(
+        rig.tmux(&["display-message", "-p", "-t", "=quick:agent", "#{pane_pid}"]),
+        agent_pid
+    );
+    assert_eq!(
+        rig.tmux(&["display-message", "-p", "-t", "=quick:shell", "#{pane_pid}"]),
+        shell_pid
+    );
+    // The presentation carries on with the agent.
+    rig.send(b"\x00q");
+    wait("the dashboard once more", || {
+        rig.seen("Workspaces") && rig.clients() == 0
+    });
+}

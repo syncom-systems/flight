@@ -226,6 +226,7 @@ impl ViewModel {
             Action::Down => self.step(1),
             Action::Select(pane) => self.select(&pane),
             Action::Open(choice) => self.open(choice),
+            Action::AddShell => self.add_shell(),
             Action::Prompt(input) => self.apply_prompt(input),
             Action::Search => {
                 self.searching = true;

@@ -12,7 +12,7 @@ pub const MAX_PREVIEW_LINES: u32 = 2000;
 /// `CreateSession` names the host explicitly.
 #[derive(Clone, PartialEq, Eq, prost::Message)]
 pub struct Command {
-    #[prost(oneof = "command_kind::Kind", tags = "1, 3, 4, 6, 7, 8, 9, 10")]
+    #[prost(oneof = "command_kind::Kind", tags = "1, 3, 4, 6, 7, 8, 9, 10, 11")]
     pub kind: Option<command_kind::Kind>,
 }
 
@@ -96,13 +96,27 @@ pub mod command_kind {
 
     /// A new surface for an existing workspace. The workspace fixes the host and the directory,
     /// so the request carries neither: the orchestrator routes by `workspace_id` and the node
-    /// resolves the rest from the workspace. At most one surface of each kind per workspace.
+    /// resolves the rest from the workspace. Without `another`, a workspace that already has a
+    /// surface of the kind refuses (the earlier rule); with it (`multiple_surfaces_v1`) a new
+    /// surface, with an identity of its own, is added beside the others.
     #[derive(Clone, PartialEq, Eq, prost::Message)]
     pub struct CreateSurface {
         #[prost(string, tag = "1")]
         pub workspace_id: String,
         #[prost(enumeration = "SurfaceKindCode", tag = "2")]
         pub kind: i32,
+        #[prost(bool, tag = "3")]
+        pub another: bool,
+    }
+
+    /// Take one surface away from a workspace (`multiple_surfaces_v1`), named by its own id
+    /// and its workspace's: nothing else of the workspace is touched.
+    #[derive(Clone, PartialEq, Eq, prost::Message)]
+    pub struct RemoveSurface {
+        #[prost(string, tag = "1")]
+        pub workspace_id: String,
+        #[prost(string, tag = "2")]
+        pub surface_id: String,
     }
 
     /// An operation on a workspace a node has saved (`saved_actions_v1`, ADR-008). Routed to
@@ -139,6 +153,8 @@ pub mod command_kind {
         CreateSurface(CreateSurface),
         #[prost(message, tag = "10")]
         SavedAction(SavedAction),
+        #[prost(message, tag = "11")]
+        RemoveSurface(RemoveSurface),
     }
 }
 
@@ -158,7 +174,7 @@ impl Command {
             SendInput(c) => host_of(&c.pane_ref),
             KillPane(c) => host_of(&c.pane_ref),
             CreateSession(c) => Some(c.host.as_str()),
-            CreateSurface(_) => None,
+            CreateSurface(_) | RemoveSurface(_) => None,
             SavedAction(c) => Some(c.host.as_str()),
         }
     }
@@ -221,6 +237,15 @@ impl Validate for Command {
                     return Err(Reject::OutOfRange("create_surface.workspace_id"));
                 }
                 SurfaceKindCode::decode(c.kind, "create_surface.kind").map(|_| ())
+            }
+            RemoveSurface(c) => {
+                if !flight_state::valid_id(&c.workspace_id) {
+                    return Err(Reject::OutOfRange("remove_surface.workspace_id"));
+                }
+                if !flight_state::valid_id(&c.surface_id) {
+                    return Err(Reject::OutOfRange("remove_surface.surface_id"));
+                }
+                Ok(())
             }
             SavedAction(c) => {
                 non_empty(&c.host, "saved_action.host")?;

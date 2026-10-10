@@ -6,10 +6,10 @@ use super::{failed, TmuxServers};
 use crate::agent_resume::{AgentLaunch, AgentSession};
 use crate::round::raw_placement;
 use crate::session_create::{create, new_id};
-use crate::{pane_agent, ControlError, SessionRequest, SurfaceRequest};
+use crate::{pane_agent, ControlError, SessionRequest, SurfaceRemoval, SurfaceRequest};
 use flight_proto::ErrorKindCode;
 use flight_state::{HostId, ServerId, SurfaceRole, WorkspaceId};
-use flight_tmux::{ConfigMark, CreateError, Launch, SurfaceMark, SurfaceTag};
+use flight_tmux::{ConfigMark, CreateError, Launch, RemoveError, SurfaceMark, SurfaceTag};
 use flight_workspaces::ConfigKey;
 use std::sync::atomic::Ordering;
 
@@ -43,6 +43,7 @@ impl TmuxServers {
         host: &HostId,
         workspace_id: &str,
         surface: &ConfigKey,
+        another: bool,
     ) -> Result<(SurfaceMark, String), ControlError> {
         let _one_at_a_time = self.surfaces.lock().unwrap_or_else(|p| p.into_inner());
         let id = WorkspaceId::new(workspace_id);
@@ -52,7 +53,7 @@ impl TmuxServers {
             let runs_agent = pane_agent(p).is_some_and(|a| a != flight_classify::AgentKind::Other);
             raw_placement(p).role(runs_agent) == SurfaceRole::Shell
         };
-        if panes.iter().any(is_shell) {
+        if !another && panes.iter().any(is_shell) {
             return Err(ControlError::new(
                 ErrorKindCode::AlreadyExists,
                 "this workspace already has a shell",
@@ -152,10 +153,67 @@ impl TmuxServers {
         Ok(())
     }
 
+    /// Take one shell away from a workspace: its window, found by its own surface id among the
+    /// panes the workspace publishes. An agent is not removed this way, nor is a window the
+    /// workspace has no mark for, nor the workspace's last window. A saved workspace forgets
+    /// the surface, so a later restore does not bring it back.
+    pub(super) fn surface_remove(&self, request: &SurfaceRemoval) -> Result<(), ControlError> {
+        let _one_at_a_time = self.surfaces.lock().unwrap_or_else(|p| p.into_inner());
+        let (server, panes) = self.workspace_panes(&request.host, &request.workspace_id)?;
+        let pane = panes
+            .iter()
+            .find(|p| !p.surface_id.is_empty() && p.surface_id == request.surface_id.as_str())
+            .ok_or_else(|| {
+                ControlError::new(
+                    ErrorKindCode::UnknownPane,
+                    format!("no surface {} in this workspace", request.surface_id),
+                )
+            })?;
+        if pane.surface_kind != SurfaceTag::Shell.as_str() {
+            return Err(ControlError::new(
+                ErrorKindCode::Unsupported,
+                "only a shell can be removed from a workspace",
+            ));
+        }
+        match self
+            .tmux(&server)?
+            .remove_surface_window(&pane.session_id, &pane.surface_id)
+        {
+            Ok(()) => {}
+            Err(RemoveError::NotFound) => {
+                return Err(ControlError::new(
+                    ErrorKindCode::UnknownPane,
+                    "the surface is already gone",
+                ))
+            }
+            Err(RemoveError::OnlyWindow) => {
+                return Err(ControlError::new(
+                    ErrorKindCode::InvalidRequest,
+                    "this is the only surface of the workspace; it is not removed",
+                ))
+            }
+            Err(RemoveError::Tmux(e)) => return Err(failed(e)),
+        }
+        if let Some(p) = &self.persistence {
+            log_unsaved(p.forget_surface(
+                &pane.config_key,
+                request.workspace_id.as_str(),
+                request.surface_id.as_str(),
+                &pane.config_surface,
+            ));
+        }
+        self.retries.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+
     pub(super) fn surface_create(&self, request: &SurfaceRequest) -> Result<(), ControlError> {
         let key = mint_key()?;
-        let (mark, workspace_config) =
-            self.shell_marked(&request.host, request.workspace_id.as_str(), &key)?;
+        let (mark, workspace_config) = self.shell_marked(
+            &request.host,
+            request.workspace_id.as_str(),
+            &key,
+            request.another,
+        )?;
         if let Some(p) = &self.persistence {
             log_unsaved(p.record_surface(
                 &workspace_config,

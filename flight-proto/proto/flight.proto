@@ -372,11 +372,19 @@ message Command {
   }
   // A new surface for an existing workspace. The workspace fixes the host and the directory, so
   // the request carries neither: the orchestrator routes by the workspace id and the node
-  // resolves the rest from the workspace itself (create_surface_v1). A workspace has at most
-  // one surface of each kind; asking for a second is refused with ALREADY_EXISTS.
+  // resolves the rest from the workspace itself (create_surface_v1). Without `another`, a
+  // workspace that has a surface of the kind refuses a second with ALREADY_EXISTS (the earlier
+  // rule); with it (multiple_surfaces_v1) a new surface with an identity of its own is added.
   message CreateSurface {
     string workspace_id = 1;
     SurfaceKindCode kind = 2;
+    bool another = 3;
+  }
+  // Take one surface away from a workspace (multiple_surfaces_v1), named by its own id under its
+  // workspace's. Only that surface goes.
+  message RemoveSurface {
+    string workspace_id = 1;
+    string surface_id = 2;
   }
   // An operation on a workspace a node has saved (saved_actions_v1). Routed to `host`; the node
   // finds the saved workspace by `config_key` among its own and refuses any other.
@@ -397,6 +405,7 @@ message Command {
     CreateSession create_session = 8;
     CreateSurface create_surface = 9;
     SavedAction saved_action = 10;
+    RemoveSurface remove_surface = 11;
   }
 }
 

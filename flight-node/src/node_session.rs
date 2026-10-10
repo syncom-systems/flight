@@ -3,24 +3,25 @@
 use crate::control::response_frame;
 use crate::{
     ControlError, ControlJob, NewSurface, NodeCore, Program, Round, SavedAction,
-    SavedActionRequest, SessionRequest, SurfaceRequest, TerminalSpec,
+    SavedActionRequest, SessionRequest, SurfaceRemoval, SurfaceRequest, TerminalSpec,
 };
 use flight_proto::{
     capability, command_kind::Kind, node_body, orchestrator_body, Command, ErrorKindCode,
     Heartbeat, NodeFrame, NodeHello, OrchestratorFrame, PaneRefMsg, ProgramCode, ProtocolVersion,
     Request, SavedActionCode, SurfaceKindCode, Validate, CURRENT_VERSION, TERMINAL_ID_LEN,
 };
-use flight_state::{PaneRef, WorkspaceId};
+use flight_state::{PaneRef, SurfaceId, WorkspaceId};
 
 /// What this node can do. `send_input` is not offered: there is no input path yet. A node
 /// never switches a client (it has none): it reveals a pane in its own tmux hierarchy.
-pub const ADVERTISED_CAPABILITIES: [&str; 9] = [
+pub const ADVERTISED_CAPABILITIES: [&str; 10] = [
     capability::PREVIEW,
     capability::GUARDED_REVEAL,
     capability::TERMINAL,
     capability::KILL,
     capability::CREATE_SESSION,
     capability::CREATE_SURFACE,
+    capability::MULTIPLE_SURFACES,
     capability::SAVED_WORKSPACES,
     capability::SAVED_ACTIONS,
     capability::AGENT_RESUME,
@@ -253,6 +254,9 @@ impl NodeSession {
             }
             Some(Kind::CreateSurface(c)) => {
                 need(capability::CREATE_SURFACE)?;
+                if c.another {
+                    need(capability::MULTIPLE_SURFACES)?;
+                }
                 let kind = match SurfaceKindCode::try_from(c.kind) {
                     Ok(SurfaceKindCode::Shell) => NewSurface::Shell,
                     Ok(SurfaceKindCode::Agent) => {
@@ -274,6 +278,18 @@ impl NodeSession {
                         host: self.core.host().clone(),
                         workspace_id: WorkspaceId::new(&c.workspace_id),
                         kind,
+                        another: c.another,
+                    },
+                ))
+            }
+            Some(Kind::RemoveSurface(c)) => {
+                need(capability::MULTIPLE_SURFACES)?;
+                Ok(ControlJob::remove_surface(
+                    id,
+                    SurfaceRemoval {
+                        host: self.core.host().clone(),
+                        workspace_id: WorkspaceId::new(&c.workspace_id),
+                        surface_id: SurfaceId::new(&c.surface_id),
                     },
                 ))
             }

@@ -24,7 +24,8 @@ impl<R: TmuxRunner> Tmux<R> {
         launch: &Launch,
         mark: &SurfaceMark,
     ) -> Result<String, CreateError> {
-        let name = mark.kind.as_str();
+        let name = self.free_window_name(session_id, mark.kind.as_str());
+        let name = name.as_str();
         let target = format!("{session_id}:");
         let by_name = format!("{session_id}:={name}");
         let mut args: Vec<String> = [
@@ -46,7 +47,7 @@ impl<R: TmuxRunner> Tmux<R> {
             args.extend(argv.iter().cloned());
         }
         let mut options = vec![
-            (SURFACE_OPTION, name),
+            (SURFACE_OPTION, mark.kind.as_str()),
             (SURFACE_ID_OPTION, mark.surface_id.as_str()),
         ];
         if let Some(config) = &mark.config {
@@ -79,6 +80,39 @@ impl<R: TmuxRunner> Tmux<R> {
             }
         }
         Ok(id)
+    }
+
+    /// `base` if no window of the session has it, else `base-2`, `base-3`...: windows are
+    /// addressed by exact name while they are being marked, so two must never share one.
+    fn free_window_name(&self, session_id: &str, base: &str) -> String {
+        let taken: Vec<String> = self
+            .runner()
+            .run(&[
+                "list-windows",
+                "-t",
+                session_id,
+                "-F",
+                "#{window_id}\t#{window_name}\t#{@flight_surface_id}",
+            ])
+            .map(|o| {
+                o.stdout
+                    .lines()
+                    .filter_map(|l| l.split('\t').nth(1))
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let name = |n: u32| {
+            if n == 1 {
+                base.to_owned()
+            } else {
+                format!("{base}-{n}")
+            }
+        };
+        (1..)
+            .map(name)
+            .find(|candidate| !taken.contains(candidate))
+            .unwrap_or_else(|| base.to_owned())
     }
 
     fn window_exists(&self, window_id: &str) -> bool {
@@ -122,6 +156,8 @@ mod tests {
         new_window_fails: Option<&'static str>,
         /// What `list-windows` says (window id, name, surface id per line).
         windows: &'static str,
+        /// What the first `list-windows` says, when it differs.
+        windows_before: &'static str,
         /// The window id `display-message` reports back; empty when the window is gone.
         alive: &'static str,
     }
@@ -132,6 +168,7 @@ mod tests {
                 calls: RefCell::default(),
                 new_window_fails: None,
                 windows: "",
+                windows_before: "",
                 alive: "@9",
             }
         }
@@ -152,7 +189,23 @@ mod tests {
                     }
                     None => "@9\n",
                 },
-                "list-windows" => self.windows,
+                // The first listing is the one that picks a free name; later ones are looked at
+                // after the failure.
+                "list-windows" => {
+                    if self
+                        .calls
+                        .borrow()
+                        .iter()
+                        .filter(|c| c[0] == "list-windows")
+                        .count()
+                        == 1
+                        && !self.windows_before.is_empty()
+                    {
+                        self.windows_before
+                    } else {
+                        self.windows
+                    }
+                }
                 "display-message" => self.alive,
                 _ => "",
             };
@@ -189,8 +242,7 @@ mod tests {
             .unwrap();
         assert_eq!(id, "@9");
         let calls = script.calls.borrow();
-        let first = &calls[0];
-        assert_eq!(first[0], "new-window");
+        let first = calls.iter().find(|c| c[0] == "new-window").unwrap();
         assert!(first.windows(2).any(|w| w == ["-t", "$3:"]));
         assert!(first.windows(2).any(|w| w == ["-c", "/work"]));
         // The marks ride in the same invocation, so no observer sees the window without them.
@@ -201,12 +253,35 @@ mod tests {
     }
 
     #[test]
+    fn a_second_window_of_a_kind_gets_a_free_name_but_is_marked_with_its_kind() {
+        let script = Script {
+            windows_before: "@1\tagent\ts-1\n@2\tshell\ts-2\n@3\tshell-2\ts-3\n",
+            ..Script::new()
+        };
+        Tmux::with_runner(&script)
+            .create_surface_window("$3", "/work", &Launch::DefaultShell, &mark())
+            .unwrap();
+        let calls = script.calls.borrow();
+        let new = calls.iter().find(|c| c[0] == "new-window").unwrap();
+        assert!(new.windows(2).any(|w| w == ["-n", "shell-3"]));
+        // Targeted by its exact (free) name, so no other window can be marked by mistake.
+        assert!(new.contains(&"$3:=shell-3".to_owned()));
+        let kind = new.iter().position(|a| a == "@flight_surface").unwrap();
+        assert_eq!(
+            new[kind + 1],
+            "shell",
+            "the mark is the kind, not the window name"
+        );
+    }
+
+    #[test]
     fn a_failure_removes_only_an_unmarked_window_of_the_kind_and_name() {
         let script = Script {
             new_window_fails: Some("boom"),
             // A leftover unmarked `shell`, the marked agent, and the user's own `shell`-named
             // window that carries another surface id.
-            windows: "@9\tshell\t\n@1\tagent\ts-1\n@4\tshell\ts-other\n",
+            windows_before: "@1\tagent\ts-1\n",
+            windows: "@9\tshell\t\n@1\tagent\ts-1\n@4\tshell-9\ts-other\n",
             ..Script::new()
         };
         let err = Tmux::with_runner(&script)

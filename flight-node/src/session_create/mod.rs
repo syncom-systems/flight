@@ -11,7 +11,7 @@ mod surface_request;
 
 pub use session_env::SessionEnv;
 pub use session_request::{Program, SessionRequest};
-pub use surface_request::{NewSurface, SurfaceRequest};
+pub use surface_request::{NewSurface, SurfaceRemoval, SurfaceRequest};
 
 pub(crate) use create::create;
 pub(crate) use new_id::new_id;

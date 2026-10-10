@@ -12,12 +12,20 @@ use ratatui::text::{Line, Span};
 const ROOM: usize = 60;
 
 pub fn prompt_lines(prompt: &ShellPrompt) -> Vec<Line<'static>> {
+    let (title, ask) = if prompt.is_another() {
+        (
+            format!("Add another shell to {}?", prompt.name()),
+            "  It is a new shell of its own; the others are not touched.",
+        )
+    } else {
+        (
+            format!("{} has no shell yet.", prompt.name()),
+            "  It starts where the agent does and keeps running.",
+        )
+    };
     let mut lines = vec![
         Line::raw(""),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled(format!("{} has no shell yet.", prompt.name()), bold()),
-        ]),
+        Line::from(vec![Span::raw("  "), Span::styled(title, bold())]),
         Line::raw(""),
         Line::styled(
             format!(
@@ -27,7 +35,7 @@ pub fn prompt_lines(prompt: &ShellPrompt) -> Vec<Line<'static>> {
             ),
             Style::default(),
         ),
-        Line::styled("  It starts where the agent does and keeps running.", dim()),
+        Line::styled(ask, dim()),
         Line::raw(""),
     ];
     lines.push(match (prompt.submitting(), prompt.error()) {

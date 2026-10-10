@@ -18,6 +18,8 @@ pub enum Command {
     FocusNext,
     /// Make the focused surface bigger (`true`) or smaller along an axis.
     Grow(Axis, bool),
+    /// Remove the focused surface from its workspace for good (a shell only; asks twice).
+    RemoveSurface,
     /// Show the workspace's agent or shell where the focused surface is.
     ShowHere(Shown),
 }

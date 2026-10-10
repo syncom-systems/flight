@@ -10,7 +10,7 @@ use flight_proto::{
 };
 use flight_state::SurfaceId;
 use flight_transport::TerminalReceiver;
-use flight_ui::{workspaces, SurfaceChoice, UiSnapshot, WorkspaceKey};
+use flight_ui::{workspaces, Surface, SurfaceChoice, UiSnapshot, WorkspaceKey};
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 
@@ -73,10 +73,23 @@ fn find(
     choice: SurfaceChoice,
     surface: Option<&SurfaceId>,
 ) -> Option<Binding> {
+    let found = find_surface(snapshot, key, choice, surface)?;
+    Some(Binding {
+        pane: found.pane.pane_ref.clone(),
+        pid: found.pane.pid,
+    })
+}
+
+fn find_surface(
+    snapshot: &UiSnapshot,
+    key: &WorkspaceKey,
+    choice: SurfaceChoice,
+    surface: Option<&SurfaceId>,
+) -> Option<Surface> {
     let workspace = workspaces(snapshot, "")
         .into_iter()
         .find(|w| &w.key() == key)?;
-    let found = match surface {
+    match surface {
         Some(id) => workspace
             .surfaces
             .iter()
@@ -85,11 +98,8 @@ fn find(
             SurfaceChoice::Agent => workspace.agent(),
             SurfaceChoice::Shell => workspace.shell(),
         },
-    }?;
-    Some(Binding {
-        pane: found.pane.pane_ref.clone(),
-        pid: found.pane.pid,
-    })
+    }
+    .cloned()
 }
 
 impl SurfaceHost for LinkHost {
@@ -207,6 +217,21 @@ impl SurfaceHost for LinkHost {
             guard: None,
             retired: Some(retired),
         })
+    }
+
+    async fn remove(
+        &self,
+        choice: SurfaceChoice,
+        surface: Option<SurfaceId>,
+    ) -> Result<(), String> {
+        let found = find_surface(
+            &self.link.current_snapshot(),
+            &self.workspace,
+            choice,
+            surface.as_ref(),
+        )
+        .ok_or_else(|| format!("this workspace has no {} now", choice.label()))?;
+        self.link.remove_surface(&self.workspace, &found.id).await
     }
 
     fn renew(&self, attachment: &[u8]) -> Result<(), String> {

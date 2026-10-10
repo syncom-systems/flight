@@ -35,8 +35,13 @@ pub const SAVED_ACTIONS: &str = "saved_actions_v1";
 /// fresh start the node could not tell apart from a restore.
 pub const AGENT_RESUME: &str = "agent_resume_v1";
 
+/// A workspace may hold several surfaces of one kind, each with its own identity (ADR-007):
+/// `CreateSurface.another` adds one beside those that exist, and `RemoveSurface` takes one away.
+/// A peer without it keeps the one-shell rule, so it is never sent either.
+pub const MULTIPLE_SURFACES: &str = "multiple_surfaces_v1";
+
 /// Every capability this build knows about.
-pub const KNOWN: [&str; 10] = [
+pub const KNOWN: [&str; 11] = [
     PREVIEW,
     GUARDED_REVEAL,
     TERMINAL,
@@ -47,6 +52,7 @@ pub const KNOWN: [&str; 10] = [
     SAVED_WORKSPACES,
     SAVED_ACTIONS,
     AGENT_RESUME,
+    MULTIPLE_SURFACES,
 ];
 
 /// The offered capabilities that `supported` also contains, in offered order, without

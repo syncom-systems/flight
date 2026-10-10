@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use crate::{OpenedTerminal, SavedActionRequest, SessionRequest, SurfaceRequest, TerminalSpec};
+use crate::{
+    OpenedTerminal, SavedActionRequest, SessionRequest, SurfaceRemoval, SurfaceRequest,
+    TerminalSpec,
+};
 use flight_proto::{
     node_body, response_result, ErrorInfo, ErrorKindCode, NodeFrame, Preview, Response,
 };
@@ -88,6 +91,15 @@ pub trait Control: Send + Sync {
         ))
     }
 
+    /// Take one surface away from a workspace, found by its own id. The workspace's other
+    /// surfaces, and the workspace, are untouched.
+    fn remove_surface(&self, _request: &SurfaceRemoval) -> Result<(), ControlError> {
+        Err(ControlError::new(
+            ErrorKindCode::Unsupported,
+            "removing a surface is not available on this control",
+        ))
+    }
+
     /// Operate on one of this node's saved workspaces. Never creates, repairs or deletes
     /// anything on the filesystem.
     fn saved_action(&self, _request: &SavedActionRequest) -> Result<(), ControlError> {
@@ -117,6 +129,7 @@ enum Op {
     },
     Create(SessionRequest),
     CreateSurface(SurfaceRequest),
+    RemoveSurface(SurfaceRemoval),
     Saved(SavedActionRequest),
     OpenTerminal(TerminalSpec),
 }
@@ -166,6 +179,13 @@ impl ControlJob {
         Self {
             request_id,
             op: Op::CreateSurface(request),
+        }
+    }
+
+    pub(crate) fn remove_surface(request_id: u64, request: SurfaceRemoval) -> Self {
+        Self {
+            request_id,
+            op: Op::RemoveSurface(request),
         }
     }
 
@@ -221,6 +241,9 @@ impl ControlJob {
                 .map(|()| response_result::Result::Done(response_result::Done {})),
             Op::CreateSurface(request) => control
                 .create_surface(request)
+                .map(|()| response_result::Result::Done(response_result::Done {})),
+            Op::RemoveSurface(request) => control
+                .remove_surface(request)
                 .map(|()| response_result::Result::Done(response_result::Done {})),
             Op::Saved(request) => control
                 .saved_action(request)
