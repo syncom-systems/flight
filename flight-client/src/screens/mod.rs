@@ -23,6 +23,7 @@ pub use cell::{CellView, Colour};
 pub use engine_failure::EngineFailure;
 pub use geometry::{Geometry, TooSmall};
 pub use modes::{Modes, MouseEncoding, MouseMode};
+pub(crate) use paint::tab_spans;
 pub use paint::{paint, Painted, Theme};
 pub use screen_model::ScreenModel;
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::mouse_event::{Kind, MouseEvent};
-use crate::screens::Modes;
+use crate::screens::{tab_spans, Modes};
 use flight_present::{Solved, Tile};
 use flight_state::SurfaceId;
 
@@ -38,6 +38,7 @@ impl Pointer {
         event: MouseEvent,
         solved: &Solved,
         modes: &dyn Fn(&SurfaceId) -> Option<Modes>,
+        label: &dyn Fn(&SurfaceId) -> String,
     ) -> Option<Routed> {
         let kind = event.kind();
         if matches!(kind, Kind::Release | Kind::Drag) {
@@ -58,6 +59,17 @@ impl Pointer {
                 None
             };
         }
+        if kind == Kind::Press {
+            if let Some(tab) = tab_at(solved, &event, label) {
+                // A tab belongs to no program: the press, and the drag and release after it,
+                // go nowhere.
+                self.grab = Some(Grab {
+                    surface: tab.clone(),
+                    forward: false,
+                });
+                return Some(Routed::Focus(tab));
+            }
+        }
         let tile = tile_at(solved, &event)?;
         match kind {
             Kind::Press => {
@@ -74,6 +86,24 @@ impl Pointer {
             _ => send(event, tile, modes),
         }
     }
+}
+
+/// The tab under a press, as the first surface it shows.
+fn tab_at(
+    solved: &Solved,
+    event: &MouseEvent,
+    label: &dyn Fn(&SurfaceId) -> String,
+) -> Option<SurfaceId> {
+    let bar = solved
+        .tab_bars
+        .iter()
+        .find(|b| b.area.contains(event.col, event.row))?;
+    let spans = tab_spans(bar, label);
+    bar.tabs
+        .iter()
+        .zip(spans)
+        .find(|(_, (from, to))| (*from..*to).contains(&event.col))
+        .map(|(tab, _)| tab.clone())
 }
 
 fn tile_at<'a>(solved: &'a Solved, event: &MouseEvent) -> Option<&'a Tile> {
@@ -139,6 +169,43 @@ mod tests {
         }
     }
 
+    fn name(s: &SurfaceId) -> String {
+        s.to_string()
+    }
+
+    /// One tile under a strip of two tabs, `one` (columns 0-4) and `two` (5-9).
+    fn tabbed() -> Solved {
+        Solved {
+            tiles: vec![tile("one", Rect::new(0, 1, 20, 4), true)],
+            dividers: Vec::new(),
+            tab_bars: vec![flight_present::TabBar {
+                area: Rect::new(0, 0, 20, 1),
+                tabs: vec![SurfaceId::new("one"), SurfaceId::new("two")],
+                active: 0,
+            }],
+            hidden: vec![SurfaceId::new("two")],
+            squeezed: false,
+        }
+    }
+
+    #[test]
+    fn a_press_on_a_tab_selects_it_and_never_reaches_a_program() {
+        let mut p = Pointer::default();
+        let m = modes(MouseMode::Motion);
+        assert_eq!(
+            p.route(at(0, 6, 0, false), &tabbed(), &m, &name),
+            Some(Routed::Focus(SurfaceId::new("two")))
+        );
+        assert_eq!(p.route(at(32, 14, 3, false), &tabbed(), &m, &name), None);
+        assert_eq!(p.route(at(0, 14, 3, true), &tabbed(), &m, &name), None);
+        // The active tab's own label too, and bare strip beyond the labels is nobody's.
+        assert_eq!(
+            p.route(at(0, 1, 0, false), &tabbed(), &m, &name),
+            Some(Routed::Focus(SurfaceId::new("one")))
+        );
+        assert_eq!(p.route(at(0, 15, 0, false), &tabbed(), &m, &name), None);
+    }
+
     fn at(code: u16, col: u16, row: u16, release: bool) -> MouseEvent {
         MouseEvent {
             code,
@@ -155,6 +222,7 @@ mod tests {
             at(0, 3, 2, false),
             &solved(),
             &modes(MouseMode::PressRelease),
+            &name,
         );
         assert_eq!(
             got,
@@ -167,19 +235,19 @@ mod tests {
         let mut p = Pointer::default();
         let m = modes(MouseMode::Motion);
         assert_eq!(
-            p.route(at(0, 12, 1, false), &solved(), &m),
+            p.route(at(0, 12, 1, false), &solved(), &m, &name),
             Some(Routed::Focus(SurfaceId::new("b")))
         );
-        assert_eq!(p.route(at(32, 13, 1, false), &solved(), &m), None);
-        assert_eq!(p.route(at(0, 13, 1, true), &solved(), &m), None);
+        assert_eq!(p.route(at(32, 13, 1, false), &solved(), &m, &name), None);
+        assert_eq!(p.route(at(0, 13, 1, true), &solved(), &m, &name), None);
     }
 
     #[test]
     fn a_drag_and_its_release_stay_with_the_tile_the_press_began_in() {
         let mut p = Pointer::default();
         let m = modes(MouseMode::Drag);
-        p.route(at(0, 8, 1, false), &solved(), &m);
-        let drag = p.route(at(32, 15, 9, false), &solved(), &m);
+        p.route(at(0, 8, 1, false), &solved(), &m, &name);
+        let drag = p.route(at(32, 15, 9, false), &solved(), &m, &name);
         assert_eq!(
             drag,
             Some(Routed::Send(
@@ -187,12 +255,12 @@ mod tests {
                 b"\x1b[<32;10;5M".to_vec()
             ))
         );
-        let up = p.route(at(0, 15, 9, true), &solved(), &m);
+        let up = p.route(at(0, 15, 9, true), &solved(), &m, &name);
         assert_eq!(
             up,
             Some(Routed::Send(SurfaceId::new("a"), b"\x1b[<0;10;5m".to_vec()))
         );
-        assert_eq!(p.route(at(32, 5, 1, false), &solved(), &m), None);
+        assert_eq!(p.route(at(32, 5, 1, false), &solved(), &m, &name), None);
     }
 
     #[test]
@@ -200,12 +268,17 @@ mod tests {
         let mut p = Pointer::default();
         let m = modes(MouseMode::PressRelease);
         assert_eq!(
-            p.route(at(64, 14, 0, false), &solved(), &m),
+            p.route(at(64, 14, 0, false), &solved(), &m, &name),
             Some(Routed::Send(SurfaceId::new("b"), b"\x1b[<64;4;1M".to_vec()))
         );
-        assert_eq!(p.route(at(0, 10, 2, false), &solved(), &m), None);
+        assert_eq!(p.route(at(0, 10, 2, false), &solved(), &m, &name), None);
         assert_eq!(
-            p.route(at(64, 14, 0, false), &solved(), &modes(MouseMode::None)),
+            p.route(
+                at(64, 14, 0, false),
+                &solved(),
+                &modes(MouseMode::None),
+                &name
+            ),
             None
         );
     }

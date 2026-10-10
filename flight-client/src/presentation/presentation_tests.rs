@@ -854,3 +854,77 @@ async fn a_workspace_with_a_third_surface_can_show_it_next_and_it_is_asked_for_b
         .iter()
         .any(|n| n.contains("already shown")));
 }
+
+fn tabbed() -> Layout {
+    Layout::single(id("agent"))
+        .add_tab(&id("agent"), id("shell"))
+        .unwrap()
+        .focus_on(&id("agent"))
+        .unwrap()
+}
+
+/// A left click at the 1-based column and row.
+fn click(col: u16, row: u16) -> Vec<u8> {
+    format!("\x1b[<0;{col};{row}M\x1b[<0;{col};{row}m").into_bytes()
+}
+
+#[tokio::test(start_paused = true)]
+async fn clicking_a_tab_shows_its_surface_and_the_click_reaches_no_program() {
+    let mut rig = start(tabbed(), (80, 24));
+    let mut agent = rig.remote().await;
+    agent
+        .to_session
+        .send(FromRemote::Data(b"\x1b[?1000h\x1b[?1006h".to_vec()))
+        .await
+        .unwrap();
+    rig.settle().await;
+    // The agent keeps writing while the user clicks the shell's tab (second, columns 7-13).
+    agent
+        .to_session
+        .send(FromRemote::Data(b"busy".to_vec()))
+        .await
+        .unwrap();
+    rig.type_(&click(10, 1)).await;
+    let mut shell = rig.remote().await;
+    assert_eq!(shell.choice, Shell);
+    assert!(received(&mut agent).await.contains(&ToRemote::Close));
+    assert_eq!(data(&received(&mut shell).await), b"");
+    // Typing now goes to the shell, as after Ctrl-Space n.
+    rig.type_(b"ls").await;
+    assert_eq!(data(&received(&mut shell).await), b"ls");
+    // And back: the agent is attached again, in the same arrangement.
+    rig.type_(&click(3, 1)).await;
+    let again = rig.remote().await;
+    assert_eq!(again.choice, Agent);
+    assert!(received(&mut shell).await.contains(&ToRemote::Close));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_click_on_the_strip_beyond_the_tabs_changes_nothing() {
+    let mut rig = start(tabbed(), (80, 24));
+    let mut agent = rig.remote().await;
+    rig.settle().await;
+    rig.type_(&click(70, 1)).await;
+    assert!(rig.remotes.try_recv().is_err());
+    assert!(!received(&mut agent).await.contains(&ToRemote::Close));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_tab_clicked_while_the_shown_surface_is_down_is_shown_and_the_downed_one_comes_back_when_clicked(
+) {
+    let mut rig = start(tabbed(), (80, 24));
+    let agent = rig.remote().await;
+    agent
+        .to_session
+        .send(FromRemote::Lost("reset".to_owned()))
+        .await
+        .unwrap();
+    rig.settle().await;
+    rig.type_(&click(10, 1)).await;
+    let shell = rig.remote().await;
+    assert_eq!(shell.choice, Shell);
+    rig.type_(&click(3, 1)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let again = rig.remote().await;
+    assert_eq!(again.choice, Agent);
+}
