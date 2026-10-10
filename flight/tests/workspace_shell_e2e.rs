@@ -484,7 +484,12 @@ fn a_click_moves_the_keyboard_between_tiles_and_a_program_that_asked_for_the_mou
     wait("both tiles on screen", || {
         rig.clients() == 2 && rig.seen("│")
     });
-    // The shell has the keyboard. It asks for the mouse, in the form Flight can read back.
+    // The shell has the keyboard. Let it finish starting, so no typed byte is lost to it, then
+    // it asks for the mouse, in the form Flight can read back.
+    wait("the shell's prompt", || {
+        !pane(&rig, "shell").trim().is_empty()
+    });
+    std::thread::sleep(Duration::from_millis(500));
     rig.send(b"printf '\\033[?1000h\\033[?1006h'; cat -v\r");
     wait("the shell is reading", || {
         pane(&rig, "shell").contains("cat -v")
