@@ -8,6 +8,7 @@ use super::view_model::PENDING_SNAPSHOTS;
 use super::{Effect, NewSurfaceRequest, PromptOutcome, ShellPrompt, SurfaceChoice, ViewModel};
 use crate::collect::CreateFailure;
 use crate::snapshot::WorkspaceKey;
+use flight_state::SurfaceId;
 
 #[derive(Debug, Clone)]
 pub(super) struct Opening {
@@ -18,6 +19,8 @@ pub(super) struct Opening {
     /// just created).
     pub(super) offer_if_missing: bool,
     pub(super) snapshots_left: u8,
+    /// Surfaces that do not count: the ones there were before another was asked for.
+    pub(super) except: Vec<SurfaceId>,
 }
 
 impl ViewModel {
@@ -54,6 +57,28 @@ impl ViewModel {
         Effect::None
     }
 
+    /// Ask to add one more shell to the selected workspace (`S`). A workspace with none is
+    /// offered its first, as `s` does. Never automatic: the prompt must be confirmed.
+    pub(super) fn add_shell(&mut self) -> Effect {
+        self.pending = None;
+        if let Some(saved) = self.selected_saved() {
+            self.message = Some(format!(
+                "{} is not running; there is no workspace to add a shell to.",
+                saved.name
+            ));
+            return Effect::None;
+        }
+        let Some(workspace) = self.selected_workspace() else {
+            return Effect::None;
+        };
+        self.prompt = Some(if workspace.shell().is_some() {
+            ShellPrompt::another(&workspace)
+        } else {
+            ShellPrompt::new(&workspace)
+        });
+        Effect::None
+    }
+
     /// The user is asked to confirm a new shell; the answer decides what happens next.
     pub(super) fn apply_prompt(&mut self, input: super::PromptInput) -> Effect {
         let Some(prompt) = self.prompt.as_mut() else {
@@ -76,9 +101,10 @@ impl ViewModel {
         request: &NewSurfaceRequest,
         result: Result<(), CreateFailure>,
     ) -> Effect {
-        // The shell being there already is what the user wanted, however it came to be.
+        // The shell being there already is what the user wanted, however it came to be (unless
+        // another was asked for, which an existing one does not answer).
         let result = match result {
-            Err(CreateFailure::AlreadyExists) => Ok(()),
+            Err(CreateFailure::AlreadyExists) if !request.another => Ok(()),
             other => other,
         };
         match result {
@@ -97,6 +123,7 @@ impl ViewModel {
                     choice: request.kind,
                     offer_if_missing: false,
                     snapshots_left: PENDING_SNAPSHOTS,
+                    except: request.known.clone(),
                 });
                 self.open_pending()
             }
@@ -141,6 +168,7 @@ impl ViewModel {
             choice,
             offer_if_missing: true,
             snapshots_left: PENDING_SNAPSHOTS,
+            except: Vec::new(),
         });
     }
 
@@ -156,7 +184,7 @@ impl ViewModel {
             .filter(|h| h.host == opening.key.host)
             .flat_map(|h| h.panes.iter())
             .filter(|p| p.workspace == opening.key.workspace)
-            .find(|p| opening.choice.is(p.kind))
+            .find(|p| opening.choice.is(p.kind) && !opening.except.contains(&p.surface))
             .cloned();
         if let Some(pane) = found {
             self.opening = None;

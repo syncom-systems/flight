@@ -5,10 +5,10 @@
 //! after the tmux server, the node or the directory is lost (ADR-008).
 
 use flight_node::{
-    Control, NewSurface, Program, SessionEnv, SessionRequest, SurfaceRequest, TmuxServers,
-    WorkspacePersistence,
+    Control, NewSurface, Program, SessionEnv, SessionRequest, SurfaceRemoval, SurfaceRequest,
+    TmuxServers, WorkspacePersistence,
 };
-use flight_state::{HostId, ServerId, WorkspaceId};
+use flight_state::{HostId, ServerId, SurfaceId, WorkspaceId};
 use flight_tmux::{SystemRunner, Tmux, TmuxEndpoint};
 use flight_workspaces::{Blocker, Health, RecoveryPolicy, RecoveryReport, RootCheck};
 use std::os::unix::fs::PermissionsExt;
@@ -180,6 +180,7 @@ fn creating_a_workspace_saves_it_and_adding_a_shell_updates_it() {
             host: HostId::new(HOST),
             workspace_id: WorkspaceId::new(&id),
             kind: NewSurface::Shell,
+            another: false,
         })
         .unwrap();
     assert_eq!(first_workspace(&live).surfaces.len(), 2);
@@ -190,6 +191,52 @@ fn creating_a_workspace_saves_it_and_adding_a_shell_updates_it() {
         live.saved().active().unwrap().workspaces[0].surfaces.len(),
         2
     );
+}
+
+#[test]
+fn several_shells_are_saved_each_removal_is_forgotten_and_a_restore_brings_back_exactly_what_is_saved(
+) {
+    let Some(mut live) = Live::start("several") else {
+        return;
+    };
+    let dir = live.dir("nga");
+    live.workspace("nga", &dir);
+    let id = first_workspace(&live).last_workspace_id.unwrap();
+    let shell = |another| {
+        live.servers.create_surface(&SurfaceRequest {
+            host: HostId::new(HOST),
+            workspace_id: WorkspaceId::new(&id),
+            kind: NewSurface::Shell,
+            another,
+        })
+    };
+    shell(false).unwrap();
+    shell(true).unwrap();
+    shell(true).unwrap();
+    let saved = first_workspace(&live);
+    assert_eq!(saved.surfaces.len(), 4);
+    // Take the second shell away: the node's record forgets exactly that one.
+    let gone = saved.surfaces[2].last_surface_id.clone().unwrap();
+    live.servers
+        .remove_surface(&SurfaceRemoval {
+            host: HostId::new(HOST),
+            workspace_id: WorkspaceId::new(&id),
+            surface_id: SurfaceId::new(&gone),
+        })
+        .unwrap();
+    let kept = first_workspace(&live);
+    assert_eq!(kept.surfaces.len(), 3);
+    assert!(kept
+        .surfaces
+        .iter()
+        .all(|s| s.last_surface_id.as_deref() != Some(&gone)));
+    assert_eq!(live.windows(), 3);
+    // Lost and restored: the agent and the two shells come back, and nothing else.
+    live.lose_tmux();
+    live.restart_node();
+    live.recover(&go());
+    live.recover(&go());
+    assert_eq!(live.windows(), 3);
 }
 
 #[test]

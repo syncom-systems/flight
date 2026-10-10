@@ -445,3 +445,92 @@ fn a_quiet_shell_reads_ready_whatever_the_node_calls_its_quiet() {
         assert!(line.contains("ready"), "{quiet:?}: {line}");
     }
 }
+
+// --- several shells ------------------------------------------------------------------------
+
+/// `nga` with an agent and the shells in `shells` (pane ids), in that listing order.
+fn with_shells(shells: &[&str]) -> UiSnapshot {
+    let mut panes = vec![pane("dev1", "nga", "%1", Busy)];
+    panes.extend(shells.iter().map(|id| shell_pane("dev1", "nga", id)));
+    snap(vec![online("dev1", panes)])
+}
+
+#[test]
+fn the_shell_is_the_oldest_one_and_stays_it_when_another_is_added() {
+    // Surface ids are random in life; the older shell has the lower pane number whatever its
+    // id sorts as.
+    let ids = |s: UiSnapshot| {
+        let w = &workspaces(&s, "")[0];
+        w.surfaces
+            .iter()
+            .map(|s| s.pane.pane_ref.pane.to_string())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ids(with_shells(&["%2"])), ["%1", "%2"]);
+    assert_eq!(
+        ids(with_shells(&["%10", "%2", "%3"])),
+        ["%1", "%2", "%3", "%10"]
+    );
+    let w = &workspaces(&with_shells(&["%9", "%4"]), "")[0];
+    assert_eq!(w.shell().unwrap().pane.pane_ref.pane.as_str(), "%4");
+}
+
+#[test]
+fn capital_s_asks_whether_to_add_another_shell_and_changes_nothing_until_confirmed() {
+    let mut vm = vm_with(with_shells(&["%2"]));
+    assert_eq!(vm.apply(Action::AddShell), Effect::None);
+    let prompt = vm.prompt().expect("the offer");
+    assert!(prompt.is_another());
+    let text = flight_ui::render_to_string(&vm, 100, 30);
+    assert!(text.contains("Add another shell to nga"), "{text}");
+    // Cancelling creates nothing.
+    assert_eq!(vm.apply(Action::Prompt(PromptInput::Cancel)), Effect::None);
+    assert!(vm.prompt().is_none());
+}
+
+#[test]
+fn another_shell_is_requested_by_name_and_the_new_one_is_opened_not_the_old_one() {
+    let mut vm = vm_with(with_shells(&["%2"]));
+    vm.apply(Action::AddShell);
+    let Effect::CreateSurface(request) = vm.apply(Action::Prompt(PromptInput::Enter)) else {
+        panic!("not a request")
+    };
+    assert!(request.another);
+    assert_eq!(request.known, [SurfaceId::new("s-%2")]);
+    assert_eq!(vm.apply_surface_created(&request, Ok(())), Effect::None);
+    // The old shell is still the only one published: nothing opens.
+    assert_eq!(vm.apply_snapshot(with_shells(&["%2"])), Effect::None);
+    // The new one appears: that is the one opened.
+    let Effect::Switch(p) = vm.apply_snapshot(with_shells(&["%2", "%3"])) else {
+        panic!("not opened")
+    };
+    assert_eq!(p.pane_ref.pane.as_str(), "%3");
+}
+
+#[test]
+fn a_refusal_to_add_another_is_not_taken_for_the_shell_already_being_there() {
+    let mut vm = vm_with(with_shells(&["%2"]));
+    vm.apply(Action::AddShell);
+    let Effect::CreateSurface(request) = vm.apply(Action::Prompt(PromptInput::Yes)) else {
+        panic!("not a request")
+    };
+    vm.apply_surface_created(&request, Err(flight_ui::CreateFailure::AlreadyExists));
+    assert!(
+        vm.prompt().is_some(),
+        "the prompt stays open with the refusal"
+    );
+    assert!(vm.prompt().unwrap().error().is_some());
+    assert!(!vm.is_opening());
+}
+
+#[test]
+fn capital_s_on_a_workspace_without_a_shell_offers_its_first_and_s_still_opens_the_oldest() {
+    let mut vm = vm_with(with_shells(&[]));
+    vm.apply(Action::AddShell);
+    assert!(!vm.prompt().unwrap().is_another());
+    let mut vm = vm_with(with_shells(&["%7", "%5"]));
+    let Effect::Switch(p) = vm.apply(Action::Open(SurfaceChoice::Shell)) else {
+        panic!("not opened")
+    };
+    assert_eq!(p.pane_ref.pane.as_str(), "%5");
+}

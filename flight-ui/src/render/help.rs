@@ -13,6 +13,7 @@ pub fn help_lines() -> Vec<Line<'static>> {
         ("↑ ↓  j k", "move between workspaces"),
         ("Enter  a", "open the workspace's agent"),
         ("s", "open its shell (offers to create one)"),
+        ("S", "add another shell to the workspace (asks first)"),
         ("Ctrl-Space a / s", "switch to the agent / shell"),
         ("Ctrl-Space q", "back to the dashboard; both keep running"),
         ("/", "search by name, host or agent"),

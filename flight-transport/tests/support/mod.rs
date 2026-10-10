@@ -140,26 +140,40 @@ pub fn node_link_stalling(
     control: Arc<dyn Control>,
     stall: Duration,
 ) -> Arc<NodeLink> {
+    node_link_limited(identity, addr, orchestrator, control, stall, None)
+}
+
+/// As `node_link_stalling`, with the node's own terminal limit set when `max_terminals` is.
+pub fn node_link_limited(
+    identity: &Arc<Identity>,
+    addr: &str,
+    orchestrator: &Fingerprint,
+    control: Arc<dyn Control>,
+    stall: Duration,
+    max_terminals: Option<usize>,
+) -> Arc<NodeLink> {
     let session = NodeSession::new(
         NodeCore::new(identity.fingerprint().host_id(), inc(1)),
         "mini-1",
     );
-    Arc::new(
-        NodeLink::new(
-            NodeLinkConfig {
-                address: addr.to_owned(),
-                identity: identity.clone(),
-                orchestrator: orchestrator.clone(),
-                servers: vec!["flight".to_owned()],
-                heartbeat_interval: Duration::from_millis(500),
-                reconnect_min: Duration::from_millis(50),
-                reconnect_max: Duration::from_millis(200),
-            },
-            session,
-            control,
-        )
-        .with_terminal_stall(stall),
+    let link = NodeLink::new(
+        NodeLinkConfig {
+            address: addr.to_owned(),
+            identity: identity.clone(),
+            orchestrator: orchestrator.clone(),
+            servers: vec!["flight".to_owned()],
+            heartbeat_interval: Duration::from_millis(500),
+            reconnect_min: Duration::from_millis(50),
+            reconnect_max: Duration::from_millis(200),
+        },
+        session,
+        control,
     )
+    .with_terminal_stall(stall);
+    Arc::new(match max_terminals {
+        Some(limit) => link.with_max_terminals(limit),
+        None => link,
+    })
 }
 
 pub fn obs(pane: &str, pid: u32, screen: &str) -> PaneObservation {

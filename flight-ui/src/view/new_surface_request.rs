@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::SurfaceChoice;
-use flight_state::{HostId, WorkspaceId};
+use flight_state::{HostId, SurfaceId, WorkspaceId};
 
 /// A request to add a surface to a workspace that exists. It names the workspace and the kind
 /// and nothing else: the host and the directory are the workspace's own, so there is nothing
@@ -14,4 +14,10 @@ pub struct NewSurfaceRequest {
     pub name: String,
     pub host_label: String,
     pub kind: SurfaceChoice,
+    /// Add the surface beside those of its kind that exist, instead of being refused for
+    /// having one. Only an explicit request for another sets it.
+    pub another: bool,
+    /// The surfaces of that kind there were when it was asked for, so the new one can be told
+    /// from them when it is published.
+    pub known: Vec<SurfaceId>,
 }

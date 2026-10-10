@@ -2,7 +2,7 @@
 
 use super::surface_names::surface_id;
 use super::target::Target;
-use flight_state::SurfaceId;
+use flight_state::{PaneRef, SurfaceId};
 use flight_ui::{SurfaceChoice, SurfaceKind, Workspace};
 
 /// One surface of a workspace, as a layout names it.
@@ -11,6 +11,8 @@ struct Entry {
     name: SurfaceId,
     target: Target,
     label: String,
+    /// The pane that realizes it now, when the workspace was read from a snapshot.
+    pane: Option<PaneRef>,
 }
 
 /// The surfaces a workspace has, and what a layout calls each. The first agent is `agent` and
@@ -57,6 +59,7 @@ impl WorkspaceSurfaces {
                 fixed.to_owned()
             };
             entries.push(Entry {
+                pane: Some(surface.pane.pane_ref.clone()),
                 name,
                 target,
                 label: if label.is_empty() {
@@ -81,6 +84,7 @@ impl WorkspaceSurfaces {
         let entries = [SurfaceChoice::Agent, SurfaceChoice::Shell]
             .into_iter()
             .map(|choice| Entry {
+                pane: None,
                 name: surface_id(choice),
                 label: surface_id(choice).to_string(),
                 target: Target {
@@ -110,6 +114,14 @@ impl WorkspaceSurfaces {
                     surface: None,
                 })
             })
+    }
+
+    /// What a layout calls the surface that `pane` realizes, if the workspace has it.
+    pub fn name_of(&self, pane: &PaneRef) -> Option<SurfaceId> {
+        self.entries
+            .iter()
+            .find(|e| e.pane.as_ref() == Some(pane))
+            .map(|e| e.name.clone())
     }
 
     pub fn label(&self, name: &SurfaceId) -> String {

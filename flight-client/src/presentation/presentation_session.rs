@@ -26,7 +26,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 
-const HINT: &str = "Ctrl-Space: | or - split, t tab, x close, n/p or click a tab, h j k l or o focus, < > + _ resize, a s show agent or shell, q leave";
+const HINT: &str = "Ctrl-Space: | or - split, t tab, x close, n/p or click a tab, h j k l or o focus, < > + _ resize, a s show agent or shell, X remove a shell, q leave";
 /// A nudge of a surface's share, in percent of the whole.
 const NUDGE: i32 = 10;
 /// How long input that cannot move holds the keyboard before it is given up, counted.
@@ -45,6 +45,11 @@ enum Event {
     },
     /// The far end finished with an attachment that was let go.
     Retired(SurfaceId),
+    /// The workspace's answer to a request to remove a surface.
+    Removed {
+        surface: SurfaceId,
+        result: Result<(), String>,
+    },
 }
 
 /// Several surfaces on one terminal (ADR-011): each showing surface has its own attachment and
@@ -115,6 +120,8 @@ impl<H: SurfaceHost> PresentationSession<H> {
             undelivered: 0,
             blocked_until: None,
             last_end: None,
+            confirm_removal: None,
+            removing: None,
         };
         let _ = output.send(b"\x1b[?1049h\x1b[2J".to_vec()).await;
         if let Some(handover) = handover {
@@ -217,6 +224,11 @@ struct Run<H: SurfaceHost> {
     undelivered: usize,
     blocked_until: Option<Instant>,
     last_end: Option<TerminalEnd>,
+    /// The surface a first `X` asked about; a second `X` for it, with nothing between, removes it.
+    confirm_removal: Option<SurfaceId>,
+    /// The surface being removed, while the workspace answers. Its stream ending is not the
+    /// end of the session.
+    removing: Option<SurfaceId>,
 }
 
 impl<H: SurfaceHost> Run<H> {
@@ -270,6 +282,30 @@ impl<H: SurfaceHost> Run<H> {
         self.dirty = true;
     }
 
+    /// A surface the user was looking at that the arrangement does not name (a second shell,
+    /// when it holds the usual two) takes the place of the surface of its kind that it does,
+    /// and has the keyboard: what they were looking at stays on screen.
+    fn make_room_for(&mut self, named: Option<&SurfaceId>, choice: flight_ui::SurfaceChoice) {
+        let Some(name) = named.filter(|n| !self.layout.contains(n)) else {
+            return;
+        };
+        let stand_in = self
+            .layout
+            .surfaces()
+            .into_iter()
+            .find(|s| {
+                (self.cfg.resolve)(s).is_some_and(|t| t.choice == choice && t.surface.is_none())
+            })
+            .cloned();
+        if let Some(old) = stand_in {
+            if let Ok(layout) = self.layout.replace(&old, name.clone()) {
+                if let Ok(layout) = layout.focus_on(name) {
+                    self.layout = layout;
+                }
+            }
+        }
+    }
+
     /// Take over a surface that is already attached, as the tile that shows it. Its screen starts
     /// empty and fills from the surface's redraw, which a change of size brings: a tile as big
     /// as the old screen is first told a size one row short, so there is always a change.
@@ -280,6 +316,8 @@ impl<H: SurfaceHost> Run<H> {
             size,
             typed_ahead,
         } = handover;
+        let named = (self.cfg.name_of)(&attachment.binding.pane);
+        self.make_room_for(named.as_ref(), choice);
         if !typed_ahead.is_empty() {
             // For the surface that has the keyboard, which the user chose: not run through the
             // key commands again (the session already took those out).
@@ -287,10 +325,22 @@ impl<H: SurfaceHost> Run<H> {
             self.log.push(&focus, typed_ahead);
         }
         let solved = self.solved();
-        let Some(tile) = solved.tiles.iter().find(|t| {
-            (self.cfg.resolve)(&t.surface)
-                .is_some_and(|target| target.surface.is_none() && target.choice == choice)
-        }) else {
+        // The tile of the very surface handed over; failing that (a workspace read some other
+        // way), the one the workspace's agent or shell goes by.
+        let Some(tile) = solved
+            .tiles
+            .iter()
+            .find(|t| named.as_ref() == Some(&t.surface))
+            .or_else(|| {
+                named.is_none().then_some(()).and_then(|()| {
+                    solved.tiles.iter().find(|t| {
+                        (self.cfg.resolve)(&t.surface).is_some_and(|target| {
+                            target.surface.is_none() && target.choice == choice
+                        })
+                    })
+                })
+            })
+        else {
             // Not on screen in this arrangement: the surface keeps running, only this stream goes.
             let _ = attachment.to_remote.try_send(ToRemote::Close);
             return;
@@ -446,7 +496,66 @@ impl<H: SurfaceHost> Run<H> {
                 self.retiring.retain(|s| s != &surface);
                 self.reconcile();
             }
+            Event::Removed { surface, result } => self.on_removed(&surface, result),
         }
+    }
+
+    /// The workspace has answered. A removed surface leaves the layout and the choices (its
+    /// process is gone and so is its place); the others are untouched.
+    fn on_removed(&mut self, surface: &SurfaceId, result: Result<(), String>) {
+        self.removing = None;
+        match result {
+            Ok(()) => {
+                self.cfg.surfaces.retain(|s| s != surface);
+                if self.layout.contains(surface) {
+                    if let Ok(layout) = self.layout.remove(surface) {
+                        self.layout = layout;
+                    }
+                }
+                self.reconcile();
+                self.say(&format!("removed {}", (self.cfg.label)(surface)));
+            }
+            Err(why) => self.say(&format!("not removed: {why}")),
+        }
+        self.dirty = true;
+    }
+
+    /// `X`: remove the focused shell, after a second `X`. Only the surface goes, and only a
+    /// shell; the layout must keep something to show.
+    fn remove_focused(&mut self) {
+        let focus = self.layout.focus().clone();
+        let Some(target) = (self.cfg.resolve)(&focus) else {
+            return;
+        };
+        if target.choice != flight_ui::SurfaceChoice::Shell {
+            return self.say("only a shell can be removed");
+        }
+        if self.removing.is_some() {
+            return self.say("a removal is already under way");
+        }
+        if self.layout.surfaces().len() < 2 {
+            return self
+                .say("show another surface first (Ctrl-Space | or t), then remove this one");
+        }
+        if self.confirm_removal.as_ref() != Some(&focus) {
+            let name = (self.cfg.label)(&focus);
+            self.confirm_removal = Some(focus);
+            return self.say(&format!(
+                "Ctrl-Space X again removes {name} for good (its processes end); anything else cancels"
+            ));
+        }
+        self.confirm_removal = None;
+        self.removing = Some(focus.clone());
+        let (host, events) = (self.host.clone(), self.events_tx.clone());
+        tokio::spawn(async move {
+            let result = host.remove(target.choice, target.surface).await;
+            let _ = events
+                .send(Event::Removed {
+                    surface: focus,
+                    result,
+                })
+                .await;
+        });
     }
 
     fn on_opened(
@@ -649,7 +758,13 @@ impl<H: SurfaceHost> Run<H> {
             }
             self.undelivered = self.undelivered.saturating_add(self.log.discard(&front));
         }
-        let none_left = !self.tiles.is_empty() && self.tiles.values().all(|t| !t.may_recover());
+        // The surface being removed ending is expected; it is not the end of anything else.
+        let mut others = self
+            .tiles
+            .iter()
+            .filter(|(s, _)| self.removing.as_ref() != Some(*s))
+            .peekable();
+        let none_left = others.peek().is_some() && others.all(|(_, t)| !t.may_recover());
         none_left.then(|| {
             self.last_end
                 .clone()
@@ -673,6 +788,9 @@ impl<H: SurfaceHost> Run<H> {
 
     fn take_keys(&mut self, bytes: &[u8]) -> Option<TerminalEnd> {
         for key in self.keys.keys(bytes) {
+            if !matches!(key, Key::Command(Command::RemoveSurface)) {
+                self.confirm_removal = None;
+            }
             match key {
                 Key::Data(data) => {
                     let focus = self.layout.focus().clone();
@@ -804,6 +922,7 @@ impl<H: SurfaceHost> Run<H> {
                 Some(new) => self.layout.add_tab(&focus, new),
                 None => return self.say("every surface of this workspace is already shown"),
             },
+            Command::RemoveSurface => return self.remove_focused(),
             Command::Close => self.layout.remove(&focus),
             Command::StepTab(forward) => Ok(self.layout.step_tab(forward)),
             Command::Focus(direction) => {

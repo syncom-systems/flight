@@ -6,8 +6,8 @@
 mod support;
 
 use flight_node::{
-    Control, ControlError, NodeSession, SessionOutput, SessionRequest, SurfaceRequest,
-    ADVERTISED_CAPABILITIES,
+    Control, ControlError, NodeSession, SessionOutput, SessionRequest, SurfaceRemoval,
+    SurfaceRequest, ADVERTISED_CAPABILITIES,
 };
 use flight_proto::{
     command_kind as ck, node_body, orchestrator_body, response_result, Command, ErrorKindCode,
@@ -28,10 +28,20 @@ struct FakeControl {
 
 impl Control for FakeControl {
     fn create_surface(&self, r: &SurfaceRequest) -> Result<(), ControlError> {
-        self.surfaces
-            .lock()
-            .unwrap()
-            .push(format!("{}/{}:{:?}", r.host, r.workspace_id, r.kind));
+        self.surfaces.lock().unwrap().push(format!(
+            "{}/{}:{:?}{}",
+            r.host,
+            r.workspace_id,
+            r.kind,
+            if r.another { " another" } else { "" }
+        ));
+        Ok(())
+    }
+    fn remove_surface(&self, r: &SurfaceRemoval) -> Result<(), ControlError> {
+        self.surfaces.lock().unwrap().push(format!(
+            "{}/{}:remove {}",
+            r.host, r.workspace_id, r.surface_id
+        ));
         Ok(())
     }
     fn capture(&self, _: &ServerId, pane: &PaneId, lines: u32) -> Result<String, ControlError> {
@@ -638,6 +648,7 @@ fn surface(id: u64, workspace: &str, kind: SurfaceKindCode) -> OrchestratorFrame
         ck::Kind::CreateSurface(ck::CreateSurface {
             workspace_id: workspace.into(),
             kind: kind as i32,
+            another: false,
         }),
     )
 }
@@ -691,7 +702,78 @@ fn a_malformed_create_surface_closes_the_stream_before_any_job() {
     assert!(surfaces().is_empty());
 }
 
+fn another(id: u64, workspace: &str) -> OrchestratorFrame {
+    request(
+        id,
+        ck::Kind::CreateSurface(ck::CreateSurface {
+            workspace_id: workspace.into(),
+            kind: SurfaceKindCode::Shell as i32,
+            another: true,
+        }),
+    )
+}
+
+fn remove(id: u64, workspace: &str, surface: &str) -> OrchestratorFrame {
+    request(
+        id,
+        ck::Kind::RemoveSurface(ck::RemoveSurface {
+            workspace_id: workspace.into(),
+            surface_id: surface.into(),
+        }),
+    )
+}
+
+#[test]
+fn another_surface_and_a_removal_are_jobs_only_for_a_peer_that_accepted_multiple_surfaces() {
+    let mut s = ready(&["create_surface_v1", "multiple_surfaces_v1"]);
+    let out = s.on_frame(another(40, "w-abc"), 1);
+    assert!(matches!(
+        only_response(out),
+        response_result::Result::Done(_)
+    ));
+    let out = s.on_frame(remove(41, "w-abc", "s-xyz"), 1);
+    assert!(matches!(
+        only_response(out),
+        response_result::Result::Done(_)
+    ));
+    // The host is this node's own; the surface is named under its workspace.
+    assert_eq!(
+        surfaces(),
+        ["node-1/w-abc:Shell another", "node-1/w-abc:remove s-xyz"]
+    );
+}
+
+#[test]
+fn without_multiple_surfaces_another_and_a_removal_are_refused_and_plain_creation_still_works() {
+    let mut s = ready(&["create_surface_v1"]);
+    for frame in [another(42, "w-abc"), remove(43, "w-abc", "s-xyz")] {
+        let out = s.on_frame(frame, 1);
+        assert!(out.jobs.is_empty());
+        assert_eq!(
+            error_kind(only_response(out)),
+            ErrorKindCode::Unsupported as i32
+        );
+    }
+    assert!(surfaces().is_empty());
+    let out = s.on_frame(surface(44, "w-abc", SurfaceKindCode::Shell), 1);
+    assert_eq!(out.jobs.len(), 1);
+}
+
+#[test]
+fn a_malformed_removal_closes_the_stream_before_any_job() {
+    let mut s = ready(&["multiple_surfaces_v1"]);
+    for (workspace, surface_id) in [("", "s-1"), ("w-1", ""), ("w:1", "s-1"), ("w-1", "../x")] {
+        let out = s.on_frame(remove(45, workspace, surface_id), 1);
+        assert!(
+            out.jobs.is_empty() && out.close.is_some(),
+            "{workspace:?} {surface_id:?}"
+        );
+    }
+    assert!(surfaces().is_empty());
+}
+
 #[test]
 fn the_node_offers_workspace_surfaces() {
+    assert!(ADVERTISED_CAPABILITIES.contains(&"multiple_surfaces_v1"));
     assert!(ADVERTISED_CAPABILITIES.contains(&"create_surface_v1"));
 }

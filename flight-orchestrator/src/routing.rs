@@ -3,7 +3,9 @@
 use crate::pending::PendingRequest;
 use crate::{Effects, Liveness, OrchestratorCore, UiId};
 use flight_proto::{
-    capability, command_kind::Kind, orchestrator_body, ErrorKindCode, OrchestratorFrame, Request,
+    capability,
+    command_kind::{CreateSurface, Kind, RemoveSurface},
+    orchestrator_body, ErrorKindCode, OrchestratorFrame, Request,
 };
 use flight_state::HostId;
 
@@ -15,7 +17,11 @@ fn required_capability(kind: &Kind) -> &'static str {
         Kind::SendInput(_) => capability::SEND_INPUT,
         Kind::KillPane(_) => capability::KILL,
         Kind::CreateSession(_) => capability::CREATE_SESSION,
+        // Another surface beside those that exist must reach a node that knows the difference
+        // from the one-shell rule: one that does not would answer as if the first were asked.
+        Kind::CreateSurface(c) if c.another => capability::MULTIPLE_SURFACES,
         Kind::CreateSurface(_) => capability::CREATE_SURFACE,
+        Kind::RemoveSurface(_) => capability::MULTIPLE_SURFACES,
         // A fresh start must reach a node that knows the difference from a restore: one that
         // does not would restore (and, in time, resume), which is not what was asked.
         Kind::SavedAction(c) if c.action == flight_proto::SavedActionCode::RestoreFresh as i32 => {
@@ -56,17 +62,20 @@ impl OrchestratorCore {
         // workspace and nothing else, and this side finds the host. A pane-addressed command
         // names its host in the pane.
         let target = match command.kind.as_ref() {
-            Some(Kind::CreateSurface(c)) => match self.host_of_workspace(&c.workspace_id) {
-                Some(host) => host,
-                None => {
-                    fail(
-                        &mut fx,
-                        ErrorKindCode::UnknownWorkspace,
-                        "no such workspace",
-                    );
-                    return fx;
+            Some(Kind::CreateSurface(CreateSurface { workspace_id, .. }))
+            | Some(Kind::RemoveSurface(RemoveSurface { workspace_id, .. })) => {
+                match self.host_of_workspace(workspace_id) {
+                    Some(host) => host,
+                    None => {
+                        fail(
+                            &mut fx,
+                            ErrorKindCode::UnknownWorkspace,
+                            "no such workspace",
+                        );
+                        return fx;
+                    }
                 }
-            },
+            }
             _ => {
                 let Some(target) = command.target_host().map(HostId::new) else {
                     fail(&mut fx, ErrorKindCode::InvalidRequest, "no target");

@@ -7,10 +7,10 @@
 
 use flight_node::{
     fresh_incarnation, Control, ControlError, NewSurface, NodeCore, Program, ServerOutcome,
-    SessionEnv, SessionRequest, SurfaceRequest, TerminalSpec, TmuxServers,
+    SessionEnv, SessionRequest, SurfaceRemoval, SurfaceRequest, TerminalSpec, TmuxServers,
 };
 use flight_proto::{ErrorKindCode, PaneState, SurfaceKindCode};
-use flight_state::{HostId, PaneId, ServerId, WorkspaceId};
+use flight_state::{HostId, PaneId, ServerId, SurfaceId, WorkspaceId};
 use flight_tmux::{SystemRunner, Tmux, TmuxEndpoint, TmuxRunner};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -88,6 +88,24 @@ impl Live {
             host: HostId::new(HOST),
             workspace_id: WorkspaceId::new(id),
             kind: NewSurface::Shell,
+            another: false,
+        })
+    }
+
+    fn add_another_shell(&self, id: &str) -> Result<(), ControlError> {
+        self.servers.create_surface(&SurfaceRequest {
+            host: HostId::new(HOST),
+            workspace_id: WorkspaceId::new(id),
+            kind: NewSurface::Shell,
+            another: true,
+        })
+    }
+
+    fn remove(&self, workspace: &str, surface: &str) -> Result<(), ControlError> {
+        self.servers.remove_surface(&SurfaceRemoval {
+            host: HostId::new(HOST),
+            workspace_id: WorkspaceId::new(workspace),
+            surface_id: SurfaceId::new(surface),
         })
     }
 
@@ -217,6 +235,125 @@ fn a_second_shell_is_refused_and_adds_nothing() {
     let err = live.add_shell(&id).unwrap_err();
     assert_eq!(err.kind, ErrorKindCode::AlreadyExists);
     assert_eq!(live.windows(), 2, "no second shell");
+}
+
+#[test]
+fn another_shell_is_asked_for_by_name_and_is_a_surface_of_its_own() {
+    let Some(live) = Live::start("another") else {
+        return;
+    };
+    live.workspace("nga", &live.dir("nga"));
+    let id = live.published()[0].workspace_id.clone();
+    live.add_shell(&id).unwrap();
+    let before = live.published();
+    live.add_another_shell(&id).unwrap();
+    live.add_another_shell(&id).unwrap();
+    let after = live.published();
+    assert_eq!(after.len(), 4);
+    // Everything that was there is exactly as it was.
+    for old in &before {
+        let now = after
+            .iter()
+            .find(|p| p.surface_id == old.surface_id)
+            .unwrap();
+        assert_eq!((&now.pane_ref, now.pid), (&old.pane_ref, old.pid));
+    }
+    let shells: Vec<_> = after
+        .iter()
+        .filter(|p| kind(p) == SurfaceKindCode::Shell)
+        .collect();
+    assert_eq!(shells.len(), 3);
+    let mut ids: Vec<_> = shells.iter().map(|p| p.surface_id.clone()).collect();
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids.len(), 3, "each has an identity of its own");
+    for shell in &shells {
+        assert_eq!(shell.workspace_id, id);
+        assert_eq!(
+            canonical(&shell.workspace_root),
+            canonical(&live.dir("nga"))
+        );
+    }
+    let mut names: Vec<_> = shells.iter().map(|p| p.window.clone()).collect();
+    names.sort();
+    assert_eq!(names, ["shell", "shell-2", "shell-3"]);
+}
+
+#[test]
+fn without_saying_another_a_second_shell_is_still_refused_even_after_several_exist() {
+    let Some(live) = Live::start("compat") else {
+        return;
+    };
+    live.workspace("nga", &live.dir("nga"));
+    let id = live.published()[0].workspace_id.clone();
+    live.add_shell(&id).unwrap();
+    live.add_another_shell(&id).unwrap();
+    let err = live.add_shell(&id).unwrap_err();
+    assert_eq!(err.kind, ErrorKindCode::AlreadyExists);
+    assert_eq!(live.windows(), 3);
+}
+
+#[test]
+fn removing_a_shell_takes_that_surface_only() {
+    let Some(live) = Live::start("remove") else {
+        return;
+    };
+    live.workspace("nga", &live.dir("nga"));
+    let id = live.published()[0].workspace_id.clone();
+    live.add_shell(&id).unwrap();
+    live.add_another_shell(&id).unwrap();
+    let before = live.published();
+    let shells: Vec<_> = before
+        .iter()
+        .filter(|p| kind(p) == SurfaceKindCode::Shell)
+        .collect();
+    let victim = shells[1].surface_id.clone();
+    live.remove(&id, &victim).unwrap();
+    let after = live.published();
+    assert_eq!(after.len(), 2);
+    assert!(after.iter().all(|p| p.surface_id != victim));
+    for kept in before.iter().filter(|p| p.surface_id != victim) {
+        let now = after
+            .iter()
+            .find(|p| p.surface_id == kept.surface_id)
+            .unwrap();
+        assert_eq!((&now.pane_ref, now.pid), (&kept.pane_ref, kept.pid));
+    }
+    // It is gone, so asking again is an unknown surface and nothing else is touched.
+    let err = live.remove(&id, &victim).unwrap_err();
+    assert_eq!(err.kind, ErrorKindCode::UnknownPane);
+    assert_eq!(live.windows(), 2);
+}
+
+#[test]
+fn an_agent_the_last_surface_and_other_workspaces_surfaces_are_not_removed() {
+    let Some(live) = Live::start("remove-refused") else {
+        return;
+    };
+    live.workspace("one", &live.dir("one"));
+    live.workspace("two", &live.dir("two"));
+    let panes = live.published();
+    let one = panes.iter().find(|p| p.session == "one").unwrap().clone();
+    let two = panes.iter().find(|p| p.session == "two").unwrap().clone();
+    // An agent is not removed this way, and neither is the only window of a workspace.
+    let err = live.remove(&one.workspace_id, &one.surface_id).unwrap_err();
+    assert_eq!(err.kind, ErrorKindCode::Unsupported);
+    live.add_shell(&one.workspace_id).unwrap();
+    let shell = live
+        .published()
+        .into_iter()
+        .find(|p| p.session == "one" && kind(p) == SurfaceKindCode::Shell)
+        .unwrap();
+    // A surface named under another workspace's id is not found there.
+    let err = live
+        .remove(&two.workspace_id, &shell.surface_id)
+        .unwrap_err();
+    assert_eq!(err.kind, ErrorKindCode::UnknownPane);
+    // An id nobody has, and an empty one, remove nothing.
+    for bad in ["s-0000000000000000", ""] {
+        assert!(live.remove(&one.workspace_id, bad).is_err());
+    }
+    assert_eq!(live.windows(), 3);
 }
 
 #[test]

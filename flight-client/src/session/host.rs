@@ -45,6 +45,16 @@ pub trait SurfaceHost: Send + Sync + 'static {
         binding: Binding,
     ) -> impl Future<Output = Result<Attachment, OpenFailure>> + Send;
 
+    /// Take a surface away from the workspace for good: its processes end. `surface` is the
+    /// one named in the layout; `choice` is its kind. A host that cannot says so.
+    fn remove(
+        &self,
+        _choice: SurfaceChoice,
+        _surface: Option<SurfaceId>,
+    ) -> impl Future<Output = Result<(), String>> + Send {
+        async { Err("this connection cannot remove a surface".to_owned()) }
+    }
+
     /// Say the presentation of this terminal is alive (ADR-004). An error means the link is
     /// gone.
     fn renew(&self, attachment: &[u8]) -> Result<(), String>;

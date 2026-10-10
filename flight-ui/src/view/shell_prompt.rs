@@ -2,7 +2,8 @@
 
 use super::{NewSurfaceRequest, PromptInput, SurfaceChoice};
 use crate::collect::CreateFailure;
-use crate::snapshot::{Workspace, WorkspaceKey};
+use crate::snapshot::{SurfaceKind, Workspace, WorkspaceKey};
+use flight_state::SurfaceId;
 
 /// Which button has the focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,11 +31,38 @@ pub struct ShellPrompt {
     focus: PromptButton,
     error: Option<String>,
     submitting: bool,
+    /// Another shell beside those the workspace has, not its first.
+    another: bool,
+    known: Vec<SurfaceId>,
 }
 
 impl ShellPrompt {
     pub fn new(workspace: &Workspace) -> Self {
         Self {
+            another: false,
+            known: Vec::new(),
+            ..Self::base(workspace)
+        }
+    }
+
+    /// Asks to add one more shell to a workspace that has some.
+    pub fn another(workspace: &Workspace) -> Self {
+        Self {
+            another: true,
+            known: workspace
+                .surfaces
+                .iter()
+                .filter(|s| s.kind == SurfaceKind::Shell)
+                .map(|s| s.id.clone())
+                .collect(),
+            ..Self::base(workspace)
+        }
+    }
+
+    fn base(workspace: &Workspace) -> Self {
+        Self {
+            another: false,
+            known: Vec::new(),
             key: workspace.key(),
             name: workspace.name.clone(),
             host_label: workspace.host_label.clone(),
@@ -55,6 +83,10 @@ impl ShellPrompt {
 
     pub fn host_label(&self) -> &str {
         &self.host_label
+    }
+
+    pub fn is_another(&self) -> bool {
+        self.another
     }
 
     pub fn root(&self) -> &str {
@@ -103,6 +135,8 @@ impl ShellPrompt {
             name: self.name.clone(),
             host_label: self.host_label.clone(),
             kind: SurfaceChoice::Shell,
+            another: self.another,
+            known: self.known.clone(),
         })
     }
 
@@ -116,6 +150,11 @@ impl ShellPrompt {
             ),
             CreateFailure::UnknownWorkspace => {
                 "That workspace is gone from its host. Nothing was created.".to_owned()
+            }
+            CreateFailure::Unsupported if self.another => {
+                "This dashboard or the workspace's node cannot hold more than one shell. \
+                 Nothing was created."
+                    .to_owned()
             }
             CreateFailure::Unsupported => {
                 "This dashboard is not connected to an orchestrator, so it cannot add a shell."
