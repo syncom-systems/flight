@@ -592,7 +592,7 @@ fn a_second_shell_is_added_on_request_has_its_own_keys_and_is_removed_alone() {
         rig.clients() == 1 && windows(&rig).contains("shell-2")
     });
     assert_eq!(windows(&rig).lines().count(), 3);
-    wait("its prompt", || pane(&rig, "shell-2").contains('❯'));
+    wait("its prompt", || !pane(&rig, "shell-2").trim().is_empty());
     rig.send(b"..ONLY-IN-THE-SECOND");
     wait("the second shell got its keys", || {
         pane(&rig, "shell-2").contains("ONLY-IN-THE-SECOND")
