@@ -12,7 +12,7 @@ pub struct TmuxVersion {
 
 impl TmuxVersion {
     /// The oldest tmux Flight supports (docs/releases/v1.0-contract.md).
-    pub const MINIMUM: Self = Self { major: 3, minor: 1 };
+    pub const MINIMUM: Self = Self { major: 3, minor: 3 };
 
     /// The version in the output of `tmux -V`, or `None` for a build that names none
     /// (`tmux master`) or anything else this cannot read.
@@ -76,10 +76,10 @@ mod tests {
 
     #[test]
     fn the_minimum_is_inclusive_and_ordered_by_number_not_text() {
-        assert!(v(3, 1).unwrap().is_supported());
+        assert!(v(3, 3).unwrap().is_supported());
         assert!(v(3, 10).unwrap().is_supported());
         assert!(v(4, 0).unwrap().is_supported());
-        assert!(!v(3, 0).unwrap().is_supported());
+        assert!(!v(3, 2).unwrap().is_supported());
         assert!(!v(2, 9).unwrap().is_supported());
     }
 }

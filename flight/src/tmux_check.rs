@@ -33,13 +33,13 @@ mod tests {
 
     #[test]
     fn an_old_tmux_is_refused_with_both_versions_named() {
-        let why = judge("tmux 2.9a").unwrap_err();
-        assert!(why.contains("2.9") && why.contains("3.1"), "{why}");
+        let why = judge("tmux 3.2a").unwrap_err();
+        assert!(why.contains("3.2") && why.contains("3.3"), "{why}");
     }
 
     #[test]
     fn a_supported_or_unnumbered_tmux_passes() {
-        assert!(judge("tmux 3.1c").is_ok());
+        assert!(judge("tmux 3.3a").is_ok());
         assert!(judge("tmux 3.7b").is_ok());
         assert!(judge("tmux master").is_ok());
     }
