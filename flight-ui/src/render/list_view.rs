@@ -12,7 +12,7 @@ use super::style::{
 use super::text::{cells, fit, pad};
 use crate::snapshot::{HostHealth, PaneView, Surface, SurfaceKind, Workspace};
 use crate::view::{Tier, ViewModel};
-use flight_state::PaneRef;
+use flight_state::{PaneRef, SurfaceId};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
@@ -262,28 +262,59 @@ impl Row<'_> {
     /// surface that does not exist yet says so and says how to make it.
     fn surfaces(&self) -> Vec<Line<'static>> {
         let room = self.width.saturating_sub(6);
-        let agent = self.w.agent();
-        let shell = self.w.shell();
-        vec![
-            self.surface_line("a", "Agent", agent, "not running", room),
-            self.surface_line("s", "Shell", shell, "none yet · press s to create", room),
-        ]
+        let chosen = self.vm.chosen_surface();
+        let mut lines = vec![self.surface_line(
+            "a",
+            "Agent".to_owned(),
+            self.w.agent(),
+            chosen.as_ref(),
+            "not running",
+            room,
+        )];
+        let shells: Vec<&Surface> = self
+            .w
+            .surfaces
+            .iter()
+            .filter(|s| s.kind == SurfaceKind::Shell)
+            .collect();
+        if shells.is_empty() {
+            lines.push(self.surface_line(
+                "s",
+                "Shell".to_owned(),
+                None,
+                None,
+                "none yet · press s to create",
+                room,
+            ));
+        }
+        // `s` opens the first; the others are reached with Tab.
+        for (i, shell) in shells.iter().enumerate() {
+            let (letter, title) = if i == 0 {
+                ("s", "Shell".to_owned())
+            } else {
+                (" ", format!("Shell {}", i.saturating_add(1)))
+            };
+            lines.push(self.surface_line(letter, title, Some(shell), chosen.as_ref(), "", room));
+        }
+        lines
     }
 
     fn surface_line(
         &self,
         key_letter: &'static str,
-        title: &'static str,
+        title: String,
         surface: Option<&Surface>,
+        chosen: Option<&SurfaceId>,
         missing: &'static str,
         room: usize,
     ) -> Line<'static> {
+        let marked = surface.is_some_and(|s| chosen == Some(&s.id));
         let mut spans = vec![
             self.bar(),
-            Span::raw("   "),
+            Span::raw(if marked { " ▸ " } else { "   " }),
             Span::styled(key_letter.to_owned(), key()),
             Span::raw(" "),
-            Span::styled(pad(title, 6), bold()),
+            Span::styled(pad(&title, 7), bold()),
         ];
         match surface {
             Some(s) => {

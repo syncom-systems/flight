@@ -12,6 +12,10 @@ pub enum Action {
     Switch,
     /// Open this surface of the selected workspace (`a` agent, `s` shell).
     Open(SurfaceChoice),
+    /// Move to the next / previous surface of the selected workspace (Tab, Shift-Tab); Enter
+    /// then opens it.
+    NextSurface,
+    PrevSurface,
     /// Ask to add another shell to the selected workspace (`S`).
     AddShell,
     /// Point at this session (a click).

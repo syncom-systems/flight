@@ -69,6 +69,7 @@ pub fn hints_line(vm: &ViewModel, width: usize) -> Line<'static> {
         hint("Enter", "Open"),
         hint("a", "Agent"),
         hint("s", "Shell"),
+        hint("Tab", "Next surface"),
         hint("/", "Search"),
         hint("?", "Help"),
         hint("q", "Quit"),

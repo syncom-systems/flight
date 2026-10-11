@@ -57,6 +57,21 @@ impl ViewModel {
         Effect::None
     }
 
+    /// Enter: open the surface the user moved to, else the workspace's default. Opening an
+    /// existing surface switches to it; it makes nothing.
+    pub(super) fn open_chosen(&mut self) -> Effect {
+        let chosen = self
+            .selected_workspace()
+            .and_then(|w| self.chosen_in(&w).cloned());
+        match chosen {
+            Some(surface) => {
+                self.pending = None;
+                Effect::Switch(surface.pane)
+            }
+            None => self.open(SurfaceChoice::Agent),
+        }
+    }
+
     /// Ask to add one more shell to the selected workspace (`S`). A workspace with none is
     /// offered its first, as `s` does. Never automatic: the prompt must be confirmed.
     pub(super) fn add_shell(&mut self) -> Effect {

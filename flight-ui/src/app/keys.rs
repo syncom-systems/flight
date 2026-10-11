@@ -28,6 +28,8 @@ fn dashboard_action(key: KeyEvent) -> Option<Action> {
         KeyCode::Up | KeyCode::Char('k') => Some(Action::Up),
         KeyCode::Down | KeyCode::Char('j') => Some(Action::Down),
         KeyCode::Enter => Some(Action::Switch),
+        KeyCode::Tab => Some(Action::NextSurface),
+        KeyCode::BackTab => Some(Action::PrevSurface),
         KeyCode::Char('a') => Some(Action::Open(SurfaceChoice::Agent)),
         KeyCode::Char('s') => Some(Action::Open(SurfaceChoice::Shell)),
         KeyCode::Char('S') => Some(Action::AddShell),
@@ -139,6 +141,8 @@ mod tests {
             Some(Action::Open(SurfaceChoice::Shell))
         );
         assert_eq!(dash(KeyCode::Char('S')), Some(Action::AddShell));
+        assert_eq!(dash(KeyCode::Tab), Some(Action::NextSurface));
+        assert_eq!(dash(KeyCode::BackTab), Some(Action::PrevSurface));
         assert_eq!(
             dash(KeyCode::Char('x')),
             Some(Action::SavedOp(SavedOp::Remove))

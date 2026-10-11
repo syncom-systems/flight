@@ -62,6 +62,7 @@ impl ViewModel {
         self.pending = None;
         self.pointing = None;
         self.opening = None;
+        self.surface = None;
         let before = self.selected();
         let list = self.keys();
         let next = match position(&list, self.selected.as_ref()) {
@@ -88,8 +89,40 @@ impl ViewModel {
             return Effect::None;
         };
         let before = self.selected();
+        if self.selected.as_ref() != Some(&key) {
+            self.surface = None;
+        }
         self.selected = Some(key);
         self.hint = i;
+        self.select_effect(before)
+    }
+
+    /// Move the marker to the next or previous surface of the selected workspace, wrapping.
+    /// Landing on the first (the default) clears it.
+    pub(super) fn step_surface(&mut self, delta: isize) -> Effect {
+        self.pending = None;
+        let Some(workspace) = self.selected_workspace() else {
+            return Effect::None;
+        };
+        let count = workspace.surfaces.len();
+        if count < 2 {
+            return Effect::None;
+        }
+        let at = self
+            .chosen_in(&workspace)
+            .and_then(|c| workspace.surfaces.iter().position(|s| s.id == c.id))
+            .unwrap_or(0);
+        let next = if delta < 0 {
+            at.checked_sub(1).unwrap_or(count.saturating_sub(1))
+        } else if at.saturating_add(1) >= count {
+            0
+        } else {
+            at.saturating_add(1)
+        };
+        let before = self.selected();
+        self.surface = (next != 0)
+            .then(|| workspace.surfaces.get(next).map(|s| s.id.clone()))
+            .flatten();
         self.select_effect(before)
     }
 

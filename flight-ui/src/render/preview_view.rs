@@ -48,7 +48,7 @@ pub fn preview_view(vm: &ViewModel, height: usize, width: usize) -> Vec<Line<'st
             ),
             dim(),
         ),
-        Line::styled(fit(&surfaces_summary(&w), width), dim()),
+        Line::styled(fit(&surfaces_summary(vm, &w), width), dim()),
         Line::styled("─".repeat(width), dim()),
     ];
     let action = action_hint(p.state);
@@ -98,12 +98,31 @@ pub fn preview_view(vm: &ViewModel, height: usize, width: usize) -> Vec<Line<'st
 }
 
 /// `~/dev/nga · shell ready`: where the surfaces start and whether a shell is there yet.
-fn surfaces_summary(w: &Workspace) -> String {
+fn surfaces_summary(vm: &ViewModel, w: &Workspace) -> String {
     let shell = match w.shell() {
         Some(_) => "shell ready",
         None => "no shell yet",
     };
-    format!(" {} · {shell}", w.root)
+    // The screen below is the marked surface's, not the agent's.
+    let showing = vm
+        .chosen_surface()
+        .and_then(|id| w.surfaces.iter().position(|s| s.id == id))
+        .and_then(|i| {
+            let surface = w.surfaces.get(i)?;
+            let shells_before = w
+                .surfaces
+                .iter()
+                .take(i)
+                .filter(|s| !s.kind.is_agent())
+                .count();
+            Some(if surface.kind.is_agent() {
+                " · showing Agent".to_owned()
+            } else {
+                format!(" · showing Shell {}", shells_before.saturating_add(1))
+            })
+        })
+        .unwrap_or_default();
+    format!(" {} · {shell}{showing}", w.root)
 }
 
 fn accent(state: AgentState) -> Color {
