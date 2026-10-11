@@ -9,6 +9,7 @@ mod orchestrator_cmd;
 mod roles;
 mod solo;
 mod ui_cmd;
+mod version;
 mod workspaces_cmd;
 
 use config::{Config, ROLES, USAGE};
@@ -31,6 +32,10 @@ fn main() -> ExitCode {
 
 fn real_main() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if version::asked(&args) {
+        println!("{}", version::line());
+        return Ok(());
+    }
     match args.first().map(String::as_str) {
         Some("orchestrator") => return orchestrator_cmd::run(&args[1..]),
         Some("node") => return node_cmd::run(&args[1..]),
