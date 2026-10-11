@@ -3,7 +3,11 @@
 # Status
 
 Short and factual. Design decisions live in the ADRs; this file says where the work stands.
-Last updated: 2026-10-10.
+Last updated: 2026-10-11.
+
+## Release management (v1.0)
+
+Flight is now release-governed: no new features before v1.0.0. The contract is `docs/releases/v1.0-contract.md`, the evidence matrix `docs/releases/v1.0-readiness.md`, the procedure and repository controls `docs/releases/v1.0-release-process.md`; the work is the GitHub milestone `v1.0.0` (blockers labelled `release-blocker`, evidence tasks `qualification`, accepted limits `known-limitation`, later ideas `post-v1`). Found while preparing it and fixed: saved files dropped keys an older build did not know (schema 2, `deny_unknown_fields`, #84), a restore brought back only the first shell (#98), tmux older than 3.3 fails the suite (minimum enforced, #86).
 
 ## Merged baseline (main)
 
