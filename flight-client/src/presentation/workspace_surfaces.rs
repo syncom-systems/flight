@@ -148,9 +148,9 @@ impl WorkspaceSurfaces {
             })
             .map(|e| e.name.clone())
             .collect();
-        doubles.iter().fold(layout, |layout, name| {
-            layout.remove(name).unwrap_or(layout)
-        })
+        doubles
+            .iter()
+            .fold(layout, |layout, name| layout.remove(name).unwrap_or(layout))
     }
 
     /// What a layout calls the surface that `pane` realizes, if the workspace has it.
