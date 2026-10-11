@@ -19,6 +19,10 @@ on:
         description: "Run id of a Release workflow run whose packages to install and walk through (empty: skip the clean-install jobs)"
         required: false
         default: ""
+      only:
+        description: "Run only this job group while debugging (service); empty runs everything"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -29,6 +33,7 @@ env:
 jobs:
   tmux-versions:
     name: tests on ${{ matrix.name }}
+    if: inputs.only == ''
     runs-on: ${{ matrix.runs-on }}
     container: ${{ matrix.container || null }}
     strategy:
@@ -52,7 +57,7 @@ jobs:
 
   clean-install-linux:
     name: clean install (Debian 12, x86_64)
-    if: inputs.release_run != ''
+    if: inputs.release_run != '' && inputs.only == ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -84,7 +89,7 @@ jobs:
 
   clean-install-macos:
     name: clean install (macOS, Apple silicon)
-    if: inputs.release_run != ''
+    if: inputs.release_run != '' && inputs.only == ''
     runs-on: macos-latest
     permissions:
       contents: read
@@ -118,7 +123,7 @@ jobs:
 
   upgrade-linux:
     name: upgrade and rollback (Linux x86_64)
-    if: inputs.release_run != ''
+    if: inputs.release_run != '' && inputs.only == ''
     runs-on: ubuntu-latest
     container: rust:1-bookworm
     permissions:
@@ -152,7 +157,7 @@ jobs:
 
   service-linux:
     name: systemd user services (Linux x86_64)
-    if: inputs.release_run != ''
+    if: inputs.release_run != '' && (inputs.only == '' || inputs.only == 'service')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -172,6 +177,7 @@ jobs:
 
   dependency-audit:
     name: dependency advisories (cargo audit)
+    if: inputs.only == ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -21,6 +21,9 @@ fail() {
   outer capture-pane -p -t s 2>/dev/null >&2 || echo "(no outer session)" >&2
   echo "--- inner windows ---" >&2
   inner list-windows -a 2>&1 >&2 || true
+  echo "--- outer pane state ---" >&2
+  outer display-message -p -t s '#{pane_dead} alt=#{alternate_on} cmd=#{pane_current_command} #{pane_width}x#{pane_height}' >&2 2>&1 || true
+  outer capture-pane -p -t s -e 2>&1 | od -c | head -20 >&2 || true
   echo "--- processes and sockets ---" >&2
   ps -eo pid,args 2>/dev/null | grep -E 'flight|tmux' | grep -v grep >&2 || true
   ls -la "/tmp/tmux-$(id -u)" 2>&1 >&2 || true
