@@ -3,13 +3,16 @@
 use crate::{migrate, LoadError, Profile};
 use serde::{Deserialize, Serialize};
 
-/// The schema this build writes. Raised only with a migration step from the previous one.
-pub const CURRENT_SCHEMA: u32 = 1;
+/// The schema this build writes. Raised only with a migration step from the previous one, and
+/// raised whenever the file's shape changes: a build refuses a file with keys it does not know
+/// (rather than dropping them when it saves), so a shape change must also move the version.
+pub const CURRENT_SCHEMA: u32 = 2;
 
 pub const DEFAULT_PROFILE: &str = "default";
 
 /// Everything saved for one host: versioned, structured, human-readable TOML.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Document {
     pub schema_version: u32,
     pub active_profile: String,

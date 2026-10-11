@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 /// directories and independent clones are both just roots; `git` is recorded metadata, not a
 /// requirement.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RootSpec {
     /// Absolute, or `~`-relative to the owning host's home.
     pub path: String,

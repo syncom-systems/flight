@@ -123,6 +123,11 @@ impl Store {
             if stored_version(&existing).is_none() {
                 return Err(LoadError::Corrupt("the saved file is unreadable".to_owned()).into());
             }
+            // Likewise a file of this version with content this build does not understand:
+            // replacing it would erase what it cannot see.
+            if let Err(e) = Document::from_toml_with(&existing, self.steps) {
+                return Err(e.into());
+            }
         }
         // Keep the generation being replaced, so one mistake (a removal, a wrong root) can be
         // taken back even without a snapshot. A copy that cannot be made does not stop the save.

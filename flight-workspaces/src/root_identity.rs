@@ -9,6 +9,7 @@ use std::os::unix::fs::MetadataExt;
 /// assume it is the workspace the user saved. A mismatch is reported, never acted on or
 /// rejected; only the user can accept it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RootIdentity {
     pub dev: u64,
     pub ino: u64,
