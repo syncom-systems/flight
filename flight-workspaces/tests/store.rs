@@ -149,3 +149,39 @@ fn nothing_runtime_or_secret_is_in_the_saved_text() {
         assert!(!text.contains(banned), "{banned} in\n{text}");
     }
 }
+
+#[test]
+fn a_key_this_build_does_not_know_is_refused_not_dropped() {
+    // A newer build adding a field without moving the version must not have it erased here.
+    let dir = scratch("store-unknown-key");
+    let store = Store::new(&dir);
+    let text = "schema_version = 2\nactive_profile = \"default\"\n\n[[profile]]\nname = \"default\"\n\n[[profile.workspace]]\nkey = \"c-0000000000000001\"\nname = \"a\"\nhost = \"h\"\nfuture_field = true\n\n[profile.workspace.root]\npath = \"/w\"\n";
+    std::fs::write(store.path(), text).unwrap();
+    assert!(matches!(
+        store.load(),
+        Err(StoreError::Load(LoadError::Corrupt(_)))
+    ));
+    assert!(store.save(&Document::default()).is_err());
+    assert_eq!(std::fs::read_to_string(store.path()).unwrap(), text);
+}
+
+#[test]
+fn a_version_one_file_is_kept_whole_upgraded_and_backed_up() {
+    let dir = scratch("store-v1-upgrade");
+    let store = Store::new(&dir);
+    let text = "schema_version = 1\nactive_profile = \"default\"\n\n[[profile]]\nname = \"default\"\n\n[[profile.workspace]]\nkey = \"c-0000000000000001\"\nname = \"a\"\nhost = \"h\"\n\n[profile.workspace.root]\npath = \"/w\"\n\n[[profile.workspace.surfaces]]\nkey = \"c-0000000000000002\"\nkind = \"shell\"\n";
+    std::fs::write(store.path(), text).unwrap();
+    let (doc, how) = store.load().unwrap();
+    assert_eq!(how, Loaded::Migrated { from: 1 });
+    assert_eq!(doc.schema_version, 2);
+    let w = &doc.active().unwrap().workspaces[0];
+    assert_eq!(w.surfaces.len(), 1);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("workspaces.v1.bak")).unwrap(),
+        text
+    );
+    // A build that predates the label field reads schema 2 as newer, and leaves it be.
+    assert!(std::fs::read_to_string(store.path())
+        .unwrap()
+        .contains("schema_version = 2"));
+}

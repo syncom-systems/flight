@@ -20,6 +20,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The release workflow runs the same four gates on the tagged commit.
+  workflow_call:
 
 # Cancel superseded runs on the same ref.
 concurrency:
