@@ -18,15 +18,15 @@ trap cleanup EXIT
 fail() {
   echo "FAIL: $1" >&2
   echo "--- screen ---" >&2
-  outer capture-pane -p -t s 2>/dev/null >&2 || echo "(no outer session)" >&2
+  outer capture-pane -p -t s >&2 2>&1 || echo "(no outer session)" >&2
   echo "--- inner windows ---" >&2
-  inner list-windows -a 2>&1 >&2 || true
+  inner list-windows -a >&2 2>&1 || true
   echo "--- outer pane state ---" >&2
   outer display-message -p -t s '#{pane_dead} alt=#{alternate_on} cmd=#{pane_current_command} #{pane_width}x#{pane_height}' >&2 2>&1 || true
   outer capture-pane -p -t s -e 2>&1 | od -c | head -20 >&2 || true
   echo "--- processes and sockets ---" >&2
   ps -eo pid,args 2>/dev/null | grep -E 'flight|tmux' | grep -v grep >&2 || true
-  ls -la "/tmp/tmux-$(id -u)" 2>&1 >&2 || true
+  ls -la "/tmp/tmux-$(id -u)" >&2 2>&1 || true
   if command -v journalctl >/dev/null 2>&1 && [ -n "${XDG_RUNTIME_DIR:-}" ]; then
     echo "--- journal (user units) ---" >&2
     journalctl --user -n 40 --no-pager >&2 2>&1 || true
