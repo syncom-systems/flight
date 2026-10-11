@@ -8,6 +8,7 @@ mod header;
 mod help;
 mod layout;
 mod list_view;
+mod name_prompt_lines;
 mod preview_view;
 mod prompt_lines;
 mod saved_list;

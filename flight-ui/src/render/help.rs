@@ -17,6 +17,7 @@ pub fn help_lines() -> Vec<Line<'static>> {
             "Tab  Shift-Tab",
             "move between the workspace's surfaces; Enter opens the marked one",
         ),
+        ("R", "name or rename the marked shell (empty clears)"),
         ("S", "add another shell to the workspace (asks first)"),
         ("Ctrl-Space a / s", "switch to the agent / shell"),
         ("Ctrl-Space q", "back to the dashboard; both keep running"),

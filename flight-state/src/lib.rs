@@ -17,6 +17,7 @@ mod session_id;
 mod session_name;
 mod session_ref;
 mod surface_id;
+mod surface_label;
 mod surface_role;
 mod window_id;
 mod workspace_id;
@@ -36,6 +37,7 @@ pub use session_name::{
 };
 pub use session_ref::SessionRef;
 pub use surface_id::SurfaceId;
+pub use surface_label::{clean_label, MAX_LABEL_CHARS};
 pub use surface_role::SurfaceRole;
 pub use window_id::WindowId;
 pub use workspace_id::{valid_id, WorkspaceId, MAX_ID_LEN};

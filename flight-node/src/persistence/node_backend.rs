@@ -119,6 +119,7 @@ impl<S: NodeTmux + ?Sized> Observer for NodeBackend<'_, S> {
                 surface_id: placement.surface(&self.host, &server).to_string(),
                 config_key: key(&info.config_surface),
                 kind,
+                name: (!placement.label().is_empty()).then(|| placement.label().to_owned()),
             };
             by_workspace
                 .entry(id.clone())
@@ -242,9 +243,13 @@ impl<S: NodeTmux + ?Sized> Executor for NodeBackend<'_, S> {
                 "an agent is created with its workspace, not added to one".to_owned(),
             ));
         }
-        let _ = def;
+        let name = def
+            .surfaces
+            .iter()
+            .find(|s| &s.key == surface)
+            .and_then(|s| s.name.as_deref());
         self.servers
-            .create_shell_marked(&self.host, workspace_id, surface)
+            .create_shell_marked(&self.host, workspace_id, surface, name)
             .map(|_| ())
             .map_err(|e| ExecError::Refused(e.message))
     }

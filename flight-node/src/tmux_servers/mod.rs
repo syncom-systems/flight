@@ -7,7 +7,7 @@
 use crate::persistence::{NodeTmux, WorkspacePersistence};
 use crate::{
     Control, ControlError, OpenedTerminal, SessionEnv, SessionRequest, SurfaceRemoval,
-    SurfaceRequest, TerminalSpec,
+    SurfaceRename, SurfaceRequest, TerminalSpec,
 };
 use flight_proto::ErrorKindCode;
 use flight_state::{PaneId, ServerId};
@@ -187,6 +187,10 @@ impl Control for TmuxServers {
         self.surface_create(request)
     }
 
+    fn rename_surface(&self, request: &SurfaceRename) -> Result<(), ControlError> {
+        self.surface_rename(request)
+    }
+
     fn remove_surface(&self, request: &SurfaceRemoval) -> Result<(), ControlError> {
         self.surface_remove(request)
     }
@@ -218,9 +222,10 @@ impl NodeTmux for TmuxServers {
         host: &flight_state::HostId,
         workspace_id: &str,
         surface: &flight_workspaces::ConfigKey,
+        name: Option<&str>,
     ) -> Result<(flight_tmux::SurfaceMark, String), ControlError> {
         // The saved definition says this surface is missing, so it is added whatever else of
         // its kind the workspace has.
-        self.shell_marked(host, workspace_id, surface, true)
+        self.shell_marked(host, workspace_id, surface, true, name)
     }
 }

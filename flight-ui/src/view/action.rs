@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use super::{FilterInput, FormInput, PromptInput, SavedOp, SavedPromptInput, SurfaceChoice};
+use super::{
+    FilterInput, FormInput, NameInput, PromptInput, SavedOp, SavedPromptInput, SurfaceChoice,
+};
 use flight_state::PaneRef;
 
 /// What the user asked for, independent of which key was pressed.
@@ -16,6 +18,10 @@ pub enum Action {
     /// then opens it.
     NextSurface,
     PrevSurface,
+    /// Name (or rename) the marked shell, or the first one (`R`).
+    NameShell,
+    /// Something done in the shell-name prompt while it is open.
+    Name(NameInput),
     /// Ask to add another shell to the selected workspace (`S`).
     AddShell,
     /// Point at this session (a click).

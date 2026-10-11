@@ -6,6 +6,9 @@ pub const WORKSPACE_OPTION: &str = "@flight_workspace";
 pub const SURFACE_OPTION: &str = "@flight_surface";
 /// Window option: the surface's own id.
 pub const SURFACE_ID_OPTION: &str = "@flight_surface_id";
+/// Window option: the label the user gave the surface. Presentation only: nothing is found or
+/// addressed by it, and two windows may carry the same one.
+pub const SURFACE_NAME_OPTION: &str = "@flight_surface_name";
 
 /// Session option: the saved-workspace key (`ConfigKey`) a session was started for. Written in
 /// the same tmux invocation that creates the session, so a start whose reply is lost still

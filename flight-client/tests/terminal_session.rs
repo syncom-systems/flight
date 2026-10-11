@@ -176,6 +176,7 @@ fn start_with(tag: &str, command: &str, terminals: bool, windows: bool) -> Rig {
                 window_id: "@0".into(),
                 session_id: "$0".into(),
                 session_path: "/tmp".into(),
+                surface_name: String::new(),
             },
         })
         .collect();
@@ -262,6 +263,7 @@ impl Rig {
             surface: flight_state::SurfaceId::new(format!("s-{id}")),
             kind: flight_ui::SurfaceKind::Agent(AgentKind::Claude),
             root: "/work".into(),
+            label: String::new(),
         }
     }
 

@@ -2,7 +2,7 @@
 
 use super::CreateFailure;
 use crate::snapshot::{PanePreview, PaneView, UiSnapshot};
-use crate::{NewSessionRequest, NewSurfaceRequest, SavedActionRequest};
+use crate::{NameSurfaceRequest, NewSessionRequest, NewSurfaceRequest, SavedActionRequest};
 use flight_state::PaneRef;
 
 /// Where the dashboard's data comes from. The UI neither knows nor cares whether it is
@@ -18,6 +18,10 @@ pub trait Backend: Send {
     /// Add a surface (a shell) to a workspace that exists, on the workspace's own host. A
     /// backend that cannot says so.
     fn create_surface(&mut self, _request: &NewSurfaceRequest) -> Result<(), CreateFailure> {
+        Err(CreateFailure::Unsupported)
+    }
+    /// Give a surface a label, or clear it. A backend that cannot says so.
+    fn name_surface(&mut self, _request: &NameSurfaceRequest) -> Result<(), CreateFailure> {
         Err(CreateFailure::Unsupported)
     }
     /// Act on a workspace a node has saved. A backend that cannot says so.

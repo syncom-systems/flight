@@ -89,3 +89,79 @@ fn the_capability_is_known_and_negotiated_away_by_a_peer_without_it() {
         vec!["create_surface_v1".to_owned()]
     );
 }
+
+// --- labels (`surface_names_v1`) ---------------------------------------------------------------
+
+#[test]
+fn a_rename_survives_the_wire_and_names_ids_only_never_a_host() {
+    use flight_proto::command_kind::RenameSurface;
+    let rename = |name: &str| Command {
+        kind: Some(Kind::RenameSurface(RenameSurface {
+            workspace_id: "w-abc".into(),
+            surface_id: "s-def".into(),
+            name: name.into(),
+        })),
+    };
+    let kind = rename("logs").kind.unwrap();
+    assert_eq!(round_trip(kind.clone()), kind);
+    assert_eq!(rename("logs").target_host(), None);
+    // Empty clears; a clean label is accepted, anything else is not.
+    for good in ["", "logs", "build / watch ✓"] {
+        rename(good).validate().unwrap();
+    }
+    for bad in [" logs", "a\tb", "a\nb", "\u{1b}[31m", &"x".repeat(33)] {
+        assert!(rename(bad).validate().is_err(), "{bad:?}");
+    }
+    let by_label = Command {
+        kind: Some(Kind::RenameSurface(RenameSurface {
+            workspace_id: "w-abc".into(),
+            surface_id: "logs shell".into(),
+            name: "x".into(),
+        })),
+    };
+    assert!(by_label.validate().is_err(), "a label is not an id");
+}
+
+fn a_pane() -> flight_proto::PaneState {
+    flight_proto::PaneState {
+        pane_ref: Some(flight_proto::PaneRefMsg {
+            host: "node-ab12".into(),
+            server: "flight".into(),
+            pane: "%1".into(),
+        }),
+        agent_kind: flight_proto::AgentKindCode::Claude as i32,
+        state: flight_proto::StateCode::Idle as i32,
+        source: flight_proto::SourceCode::Scrape as i32,
+        session: "work".into(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn a_published_label_is_optional_validated_and_ignored_by_an_older_reader() {
+    let mut pane = a_pane();
+    pane.validate().unwrap();
+    pane.surface_name = "logs".into();
+    pane.validate().unwrap();
+    pane.surface_name = "bad\tname".into();
+    assert!(pane.validate().is_err());
+
+    // An older reader's PaneState has no tag 19: the bytes still decode, label dropped.
+    #[derive(Clone, PartialEq, prost::Message)]
+    struct Older {
+        #[prost(string, tag = "9")]
+        session: String,
+    }
+    let mut named = a_pane();
+    named.surface_name = "logs".into();
+    let older = Older::decode(named.encode_to_vec().as_slice()).unwrap();
+    assert_eq!(older.session, "work");
+    // And a pane without a label is the same bytes it always was.
+    let unnamed = a_pane();
+    assert!(!unnamed.encode_to_vec().windows(4).any(|w| w == b"logs"));
+}
+
+#[test]
+fn the_label_capability_is_known() {
+    assert!(capability::KNOWN.contains(&"surface_names_v1"));
+}

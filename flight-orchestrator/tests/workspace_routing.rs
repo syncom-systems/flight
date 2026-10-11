@@ -25,6 +25,7 @@ fn surface_obs(pane: &str, pid: u32, ws: &str, surface: &str, kind: &str) -> Pan
         window_id: "@1".into(),
         session_id: "$1".into(),
         session_path: "/work/nga".into(),
+        surface_name: String::new(),
     };
     o
 }
@@ -231,6 +232,53 @@ fn a_node_without_multiple_surfaces_is_never_asked_for_another_or_a_removal() {
     // The plain request is still carried.
     send(&mut w, create_surface(3, "w-a"));
     assert_eq!(w.forwarded.len(), 1);
+}
+
+fn rename_surface(id: u64, ws: &str, surface: &str, name: &str) -> UiRequest {
+    UiRequest {
+        body: Some(ui_request_body::Body::Command(Request {
+            request_id: id,
+            command: Some(Command {
+                kind: Some(ck::Kind::RenameSurface(ck::RenameSurface {
+                    workspace_id: ws.into(),
+                    surface_id: surface.into(),
+                    name: name.into(),
+                })),
+            }),
+        })),
+    }
+}
+
+#[test]
+fn a_rename_is_routed_by_the_workspace_and_only_to_a_node_that_keeps_names() {
+    let mut w = two_workspaces();
+    send(&mut w, rename_surface(1, "w-b", "s-b1", "logs"));
+    let hosts: Vec<_> = w.forwarded.iter().map(|(h, _)| h.as_str()).collect();
+    assert_eq!(hosts, ["node-b"], "routed by the workspace alone");
+    assert!(error_kinds(&w).is_empty());
+
+    let mut old = simple_world();
+    old.subscribe(UiId(1));
+    old.connect_offering(0, &["create_surface_v1", "multiple_surfaces_v1"]);
+    old.observe(
+        0,
+        round(1, vec![surface_obs("%1", 10, "w-a", "s-a1", "agent")]),
+    );
+    send(&mut old, rename_surface(1, "w-a", "s-a1", "logs"));
+    assert_eq!(error_kinds(&old), vec![ErrorKindCode::Unsupported as i32]);
+    assert!(old.forwarded.is_empty());
+}
+
+#[test]
+fn a_surface_label_reaches_the_ui_with_the_pane_and_changes_it_when_it_changes() {
+    let mut w = two_workspaces();
+    let mut named = surface_obs("%1", 10, "w-a", "s-a1", "shell");
+    named.placement.surface_name = "logs".into();
+    w.observe(0, round(2, vec![named.clone()]));
+    assert_eq!(panes_of(&w, "node-a")[0].surface_name, "logs");
+    named.placement.surface_name = String::new();
+    w.observe(0, round(3, vec![named]));
+    assert_eq!(panes_of(&w, "node-a")[0].surface_name, "");
 }
 
 #[test]

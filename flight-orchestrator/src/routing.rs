@@ -4,7 +4,7 @@ use crate::pending::PendingRequest;
 use crate::{Effects, Liveness, OrchestratorCore, UiId};
 use flight_proto::{
     capability,
-    command_kind::{CreateSurface, Kind, RemoveSurface},
+    command_kind::{CreateSurface, Kind, RemoveSurface, RenameSurface},
     orchestrator_body, ErrorKindCode, OrchestratorFrame, Request,
 };
 use flight_state::HostId;
@@ -22,6 +22,7 @@ fn required_capability(kind: &Kind) -> &'static str {
         Kind::CreateSurface(c) if c.another => capability::MULTIPLE_SURFACES,
         Kind::CreateSurface(_) => capability::CREATE_SURFACE,
         Kind::RemoveSurface(_) => capability::MULTIPLE_SURFACES,
+        Kind::RenameSurface(_) => capability::SURFACE_NAMES,
         // A fresh start must reach a node that knows the difference from a restore: one that
         // does not would restore (and, in time, resume), which is not what was asked.
         Kind::SavedAction(c) if c.action == flight_proto::SavedActionCode::RestoreFresh as i32 => {
@@ -63,7 +64,8 @@ impl OrchestratorCore {
         // names its host in the pane.
         let target = match command.kind.as_ref() {
             Some(Kind::CreateSurface(CreateSurface { workspace_id, .. }))
-            | Some(Kind::RemoveSurface(RemoveSurface { workspace_id, .. })) => {
+            | Some(Kind::RemoveSurface(RemoveSurface { workspace_id, .. }))
+            | Some(Kind::RenameSurface(RenameSurface { workspace_id, .. })) => {
                 match self.host_of_workspace(workspace_id) {
                     Some(host) => host,
                     None => {

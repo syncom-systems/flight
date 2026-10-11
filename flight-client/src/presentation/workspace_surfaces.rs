@@ -56,10 +56,12 @@ impl WorkspaceSurfaces {
                     },
                 )
             };
-            let label = if target.surface.is_some() {
-                surface.pane.window.clone()
-            } else {
-                fixed.to_owned()
+            // What a tab says: the user's label if they gave one, else the window's name (for
+            // those that are not the default) or the kind.
+            let label = match surface.label() {
+                Some(label) => label.to_owned(),
+                None if target.surface.is_some() => surface.pane.window.clone(),
+                None => fixed.to_owned(),
             };
             entries.push(Entry {
                 pane: Some(surface.pane.pane_ref.clone()),
@@ -208,6 +210,7 @@ pub(crate) mod fixtures {
             surface: SurfaceId::new(id),
             kind,
             root: "/work".to_owned(),
+            label: String::new(),
         }
     }
 
@@ -315,6 +318,35 @@ mod tests {
             .split(&agent, Axis::Across, shell, Placement::After)
             .unwrap();
         assert_eq!(after.without_doubles(plain.clone()), plain);
+    }
+
+    #[test]
+    fn a_label_names_a_tab_but_never_a_surface_and_equal_labels_stay_two_surfaces() {
+        let mut one = pane("s-2", SurfaceKind::Shell, "shell", 2);
+        let mut two = pane("s-3", SurfaceKind::Shell, "shell-2", 3);
+        let mut three = pane("s-4", SurfaceKind::Shell, "shell-3", 4);
+        one.label = "logs".to_owned();
+        two.label = "logs".to_owned();
+        three.label = "agent".to_owned();
+        let found = surfaces_of(vec![
+            pane("s-1", SurfaceKind::Agent(AgentKind::Claude), "agent", 1),
+            one,
+            two,
+            three,
+        ]);
+        // Layout names are what they were: by kind for the oldest, by id for the others.
+        let names: Vec<String> = found.names().iter().map(ToString::to_string).collect();
+        assert_eq!(names, ["agent", "shell", "s-3", "s-4"]);
+        // The tab says the label, whichever surface it is.
+        assert_eq!(found.label(&SurfaceId::new("shell")), "logs");
+        assert_eq!(found.label(&SurfaceId::new("s-3")), "logs");
+        // A label that looks like a layout name resolves to nothing by itself.
+        assert_eq!(found.label(&SurfaceId::new("s-4")), "agent");
+        assert_eq!(
+            found.target(&SurfaceId::new("s-4")).unwrap().surface,
+            Some(SurfaceId::new("s-4"))
+        );
+        assert!(found.target(&SurfaceId::new("logs")).is_none());
     }
 
     #[test]

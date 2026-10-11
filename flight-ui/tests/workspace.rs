@@ -641,3 +641,106 @@ fn tab_in_a_workspace_with_one_surface_does_nothing() {
     assert_eq!(vm.apply(Action::NextSurface), Effect::None);
     assert_eq!(vm.chosen_surface(), None);
 }
+
+// --- shell names -----------------------------------------------------------------------------
+
+use flight_ui::{CreateFailure, NameInput};
+
+fn type_name(vm: &mut ViewModel, text: &str) {
+    for c in text.chars() {
+        vm.apply(Action::Name(NameInput::Char(c)));
+    }
+}
+
+fn labelled(label_of: &[(&str, &str)]) -> UiSnapshot {
+    let mut s = nga_with_three_shells();
+    for (pane_id, label) in label_of {
+        for p in &mut s.hosts[0].panes {
+            if p.pane_ref == pref("dev1", pane_id) {
+                p.label = (*label).to_owned();
+            }
+        }
+    }
+    s
+}
+
+#[test]
+fn r_names_the_marked_shell_by_its_id_and_the_name_is_only_a_label() {
+    let mut vm = vm_with(nga_with_three_shells());
+    vm.apply(Action::NextSurface);
+    vm.apply(Action::NextSurface);
+    assert_eq!(vm.apply(Action::NameShell), Effect::None);
+    assert_eq!(vm.input_mode(), InputMode::Name);
+    type_name(&mut vm, "  build logs ");
+    let Effect::NameSurface(request) = vm.apply(Action::Name(NameInput::Enter)) else {
+        panic!("enter")
+    };
+    // The surface is named by its id; the label is trimmed; nothing else is carried.
+    assert_eq!(request.surface, SurfaceId::new("s-%3"));
+    assert_eq!(request.workspace, workspace_of("dev1", "nga"));
+    assert_eq!(request.name.as_deref(), Some("build logs"));
+    vm.apply_surface_named(&request, Ok(()));
+    assert_eq!(vm.input_mode(), InputMode::Dashboard);
+}
+
+#[test]
+fn without_a_mark_r_names_the_first_shell() {
+    let mut vm = vm_with(nga_with_three_shells());
+    vm.apply(Action::NameShell);
+    type_name(&mut vm, "main");
+    let Effect::NameSurface(request) = vm.apply(Action::Name(NameInput::Enter)) else {
+        panic!("enter")
+    };
+    assert_eq!(request.surface, SurfaceId::new("s-%2"));
+    // A workspace with no shell has nothing to name: told in words, no prompt.
+    let mut vm = vm_with(nga(Busy, false));
+    assert_eq!(vm.apply(Action::NameShell), Effect::None);
+    assert_eq!(vm.input_mode(), InputMode::Dashboard);
+    assert!(vm.message().unwrap().contains("no shell"));
+}
+
+#[test]
+fn an_empty_name_clears_and_a_bad_one_is_refused_in_the_prompt() {
+    let mut vm = vm_with(labelled(&[("%2", "old")]));
+    vm.apply(Action::NameShell);
+    // The prompt starts from the current name; erasing it clears the label.
+    for _ in 0..3 {
+        vm.apply(Action::Name(NameInput::Backspace));
+    }
+    let Effect::NameSurface(request) = vm.apply(Action::Name(NameInput::Enter)) else {
+        panic!("enter")
+    };
+    assert_eq!(request.name, None);
+    // A refusal keeps the prompt open with the reason and lets the user try again.
+    vm.apply_surface_named(&request, Err(CreateFailure::Unsupported));
+    assert_eq!(vm.input_mode(), InputMode::Name);
+    assert!(vm.name_prompt().unwrap().error().is_some());
+    vm.apply(Action::Name(NameInput::Cancel));
+    assert_eq!(vm.input_mode(), InputMode::Dashboard);
+}
+
+#[test]
+fn a_name_is_shown_for_its_shell_and_two_shells_may_share_one_without_confusion() {
+    let mut vm = vm_with(labelled(&[("%2", "logs"), ("%3", "logs")]));
+    let text = flight_ui::render_to_string(&vm, 110, 30);
+    assert_eq!(text.matches("logs").count(), 2, "{text}");
+    // Both are still two surfaces with their own ids: Tab moves between them and Enter opens
+    // the one marked, not "the one called logs".
+    vm.apply(Action::NextSurface);
+    assert_eq!(vm.chosen_surface(), Some(SurfaceId::new("s-%2")));
+    assert_eq!(
+        opened(vm.apply(Action::Switch)).pane_ref,
+        pref("dev1", "%2")
+    );
+    vm.apply(Action::NextSurface);
+    assert_eq!(vm.chosen_surface(), Some(SurfaceId::new("s-%3")));
+    assert_eq!(
+        opened(vm.apply(Action::Switch)).pane_ref,
+        pref("dev1", "%3")
+    );
+    // `s` is still the oldest shell, whatever either is called.
+    assert_eq!(
+        opened(vm.apply(Action::Open(SurfaceChoice::Shell))).pane_ref,
+        pref("dev1", "%2")
+    );
+}

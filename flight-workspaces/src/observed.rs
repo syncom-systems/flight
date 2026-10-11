@@ -9,6 +9,8 @@ pub struct ObservedSurface {
     /// The saved surface this one was started for, when it was started from a definition.
     pub config_key: Option<ConfigKey>,
     pub kind: SurfaceKind,
+    /// The label the user gave it, if any.
+    pub name: Option<String>,
 }
 
 /// A workspace seen running on a host, as the node publishes it.

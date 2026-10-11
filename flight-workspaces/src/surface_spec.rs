@@ -26,4 +26,9 @@ pub struct SurfaceSpec {
     /// The runtime `SurfaceId` last seen. A hint for matching, never an authority.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_surface_id: Option<String>,
+    /// The label the user gave the surface. Presentation only: the surface is identified by
+    /// `key`, and two surfaces may carry the same label. Absent in files saved before labels
+    /// existed, and written only when there is one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }

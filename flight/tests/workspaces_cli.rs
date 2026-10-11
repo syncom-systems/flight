@@ -83,6 +83,7 @@ fn workspace(name: &str) -> flight_workspaces::WorkspaceDefinition {
             provider: Some("claude".to_owned()),
             skip_permissions: true,
             last_surface_id: None,
+            name: None,
         }],
         origin: Origin::Local,
         last_workspace_id: Some("w-1".to_owned()),

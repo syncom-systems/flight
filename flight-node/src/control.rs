@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use crate::{
-    OpenedTerminal, SavedActionRequest, SessionRequest, SurfaceRemoval, SurfaceRequest,
-    TerminalSpec,
+    OpenedTerminal, SavedActionRequest, SessionRequest, SurfaceRemoval, SurfaceRename,
+    SurfaceRequest, TerminalSpec,
 };
 use flight_proto::{
     node_body, response_result, ErrorInfo, ErrorKindCode, NodeFrame, Preview, Response,
@@ -100,6 +100,14 @@ pub trait Control: Send + Sync {
         ))
     }
 
+    /// Give a surface a label, or clear it. Presentation only: the surface is found by its id.
+    fn rename_surface(&self, _request: &SurfaceRename) -> Result<(), ControlError> {
+        Err(ControlError::new(
+            ErrorKindCode::Unsupported,
+            "naming a surface is not available on this control",
+        ))
+    }
+
     /// Operate on one of this node's saved workspaces. Never creates, repairs or deletes
     /// anything on the filesystem.
     fn saved_action(&self, _request: &SavedActionRequest) -> Result<(), ControlError> {
@@ -130,6 +138,7 @@ enum Op {
     Create(SessionRequest),
     CreateSurface(SurfaceRequest),
     RemoveSurface(SurfaceRemoval),
+    RenameSurface(SurfaceRename),
     Saved(SavedActionRequest),
     OpenTerminal(TerminalSpec),
 }
@@ -189,6 +198,13 @@ impl ControlJob {
         }
     }
 
+    pub(crate) fn rename_surface(request_id: u64, request: SurfaceRename) -> Self {
+        Self {
+            request_id,
+            op: Op::RenameSurface(request),
+        }
+    }
+
     pub(crate) fn saved_action(request_id: u64, request: SavedActionRequest) -> Self {
         Self {
             request_id,
@@ -244,6 +260,9 @@ impl ControlJob {
                 .map(|()| response_result::Result::Done(response_result::Done {})),
             Op::RemoveSurface(request) => control
                 .remove_surface(request)
+                .map(|()| response_result::Result::Done(response_result::Done {})),
+            Op::RenameSurface(request) => control
+                .rename_surface(request)
                 .map(|()| response_result::Result::Done(response_result::Done {})),
             Op::Saved(request) => control
                 .saved_action(request)

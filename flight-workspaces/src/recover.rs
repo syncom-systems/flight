@@ -223,6 +223,7 @@ fn definition_of(host: &str, o: &ObservedWorkspace) -> Option<WorkspaceDefinitio
                 provider: (s.kind == SurfaceKind::Agent).then(|| "claude".to_owned()),
                 skip_permissions: false,
                 last_surface_id: Some(s.surface_id.clone()),
+                name: s.name.clone(),
             })
         })
         .collect::<Option<Vec<_>>>()?;

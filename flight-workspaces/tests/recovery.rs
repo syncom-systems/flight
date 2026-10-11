@@ -123,6 +123,7 @@ fn a_workspace_that_appeared_between_planning_and_acting_is_not_started_again() 
                     surface_id: format!("s-{}", s.key),
                     config_key: Some(s.key.clone()),
                     kind: s.kind,
+                    name: None,
                 })
                 .collect(),
         });
@@ -152,11 +153,13 @@ fn a_running_workspace_is_reconnected_by_identity_even_after_its_runtime_id_chan
                     surface_id: "s1".into(),
                     config_key: None,
                     kind: SurfaceKind::Agent,
+                    name: None,
                 },
                 ObservedSurface {
                     surface_id: "s2".into(),
                     config_key: None,
                     kind: SurfaceKind::Shell,
+                    name: None,
                 },
             ],
         });
@@ -320,6 +323,7 @@ fn a_running_workspace_nobody_saved_is_recorded_once() {
                 surface_id: "s".into(),
                 config_key: None,
                 kind: SurfaceKind::Shell,
+                name: None,
             }],
         });
     let first = r.recover(&RecoveryPolicy::default());

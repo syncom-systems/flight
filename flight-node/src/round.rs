@@ -72,5 +72,6 @@ pub(crate) fn raw_placement(info: &PaneInfo) -> RawPlacement {
         window_id: info.window_id.clone(),
         session_id: info.session_id.clone(),
         session_path: info.session_path.clone(),
+        surface_name: info.surface_name.clone(),
     }
 }

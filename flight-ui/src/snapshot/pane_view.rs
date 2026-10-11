@@ -26,4 +26,7 @@ pub struct PaneView {
     pub kind: SurfaceKind,
     /// The workspace's root directory on its host.
     pub root: String,
+    /// The label the user gave the surface; empty: none. Presentation only. Two surfaces may
+    /// share one, so nothing is ever found, addressed or matched by it.
+    pub label: String,
 }

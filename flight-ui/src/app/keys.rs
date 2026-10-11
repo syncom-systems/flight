@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::view::{
-    Action, FilterInput, FormInput, InputMode, PromptInput, SavedOp, SavedPromptInput,
+    Action, FilterInput, FormInput, InputMode, NameInput, PromptInput, SavedOp, SavedPromptInput,
     SurfaceChoice,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -17,6 +17,7 @@ pub fn action_for(key: KeyEvent, mode: InputMode) -> Option<Action> {
         InputMode::Prompt => prompt_action(key).map(Action::Prompt),
         InputMode::SavedConfirm => saved_confirm_action(key).map(Action::SavedPrompt),
         InputMode::SavedInput => saved_input_action(key).map(Action::SavedPrompt),
+        InputMode::Name => name_action(key).map(Action::Name),
         InputMode::Help => Some(Action::CloseHelp),
         InputMode::Search => search_action(key),
         InputMode::Dashboard => dashboard_action(key),
@@ -33,6 +34,7 @@ fn dashboard_action(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('a') => Some(Action::Open(SurfaceChoice::Agent)),
         KeyCode::Char('s') => Some(Action::Open(SurfaceChoice::Shell)),
         KeyCode::Char('S') => Some(Action::AddShell),
+        KeyCode::Char('R') => Some(Action::NameShell),
         KeyCode::Char('r') => Some(Action::Refresh),
         KeyCode::Char('n') => Some(Action::NewSession),
         // These act only on a selected saved workspace.
@@ -68,6 +70,16 @@ fn prompt_action(key: KeyEvent) -> Option<PromptInput> {
         KeyCode::Char('y' | 'Y') => Some(PromptInput::Yes),
         KeyCode::Enter => Some(PromptInput::Enter),
         KeyCode::Tab | KeyCode::BackTab | KeyCode::Left | KeyCode::Right => Some(PromptInput::Next),
+        _ => None,
+    }
+}
+
+fn name_action(key: KeyEvent) -> Option<NameInput> {
+    match key.code {
+        KeyCode::Esc => Some(NameInput::Cancel),
+        KeyCode::Enter => Some(NameInput::Enter),
+        KeyCode::Backspace => Some(NameInput::Backspace),
+        KeyCode::Char(c) => Some(NameInput::Char(c)),
         _ => None,
     }
 }
@@ -141,6 +153,7 @@ mod tests {
             Some(Action::Open(SurfaceChoice::Shell))
         );
         assert_eq!(dash(KeyCode::Char('S')), Some(Action::AddShell));
+        assert_eq!(dash(KeyCode::Char('R')), Some(Action::NameShell));
         assert_eq!(dash(KeyCode::Tab), Some(Action::NextSurface));
         assert_eq!(dash(KeyCode::BackTab), Some(Action::PrevSurface));
         assert_eq!(
