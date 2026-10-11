@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: MIT
+#
+# Flight node as a per-user systemd service (Linux). Install per docs/install.md:
+#   mkdir -p ~/.config/systemd/user && cp flight-node.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now flight-node
+#   loginctl enable-linger "$USER"        # keep it running after logout and from boot
+#
+# The node runs under the service manager, not from a shell or tmux (contrib/launchd/README.md
+# explains why). It restarts on any exit. It finds tmux on PATH; add the directory below if
+# tmux lives elsewhere.
+[Unit]
+Description=Flight node (observes tmux, reports to the orchestrator)
+Documentation=https://github.com/syncom-systems/flight/blob/main/docs/install.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# `flight node join` must have been run once for this user.
+ExecStart=%h/.local/bin/flight node run
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Restart=always
+RestartSec=10
+# Do not take the tmux server (and the sessions in it) down with the node.
+KillMode=process
+
+[Install]
+WantedBy=default.target
