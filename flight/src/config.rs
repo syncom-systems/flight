@@ -30,7 +30,8 @@ pub const USAGE: &str =
   --no-local           do not watch a local tmux server
   --ssh ALIAS[:SOCKET] also watch a remote host via an ssh alias (default socket 'flight')
   --refresh SECS       refresh interval; default 2
-  --once               print one frame as text and exit";
+  --once               print one frame as text and exit
+  --version, -V        print the version and exit";
 
 /// The distributed commands, shown with --help.
 pub const ROLES: &str = "distributed mode (an orchestrator, nodes that observe tmux, a dashboard):

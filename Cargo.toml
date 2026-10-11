@@ -30,7 +30,7 @@ edition = "2021"
 version = "0.0.1"
 license = "MIT"
 authors = ["Mats Sundvall"]
-repository = "https://github.com/matssun/flight"
+repository = "https://github.com/syncom-systems/flight"
 
 [workspace.dependencies]
 regex = "1"
