@@ -5,12 +5,12 @@ use super::opening::Opening;
 use super::SavedPrompt;
 use super::{
     Action, Effect, FilterInput, FormOutcome, HostChoice, InputMode, NewSessionForm,
-    NewSessionRequest, ShellPrompt, SurfaceChoice,
+    NewSessionRequest, ShellPrompt,
 };
 use crate::collect::CreateFailure;
 use crate::snapshot::HostHealth;
-use crate::snapshot::{PanePreview, SavedView, UiSnapshot, Workspace, WorkspaceKey};
-use flight_state::{HostId, PaneRef};
+use crate::snapshot::{PanePreview, SavedView, Surface, UiSnapshot, Workspace, WorkspaceKey};
+use flight_state::{HostId, PaneRef, SurfaceId};
 
 /// Presentation state: the latest snapshot plus what the user is pointing at. Selection is
 /// the identity of a workspace, never a row number, so reordering cannot move the cursor onto
@@ -21,6 +21,10 @@ pub struct ViewModel {
     pub(super) selected: Option<WorkspaceKey>,
     /// Index the selection had in the list, to pick a neighbour if it vanishes.
     pub(super) hint: usize,
+    /// The surface of the selected workspace the user moved to (Tab), by its own id. `None`:
+    /// the workspace's default (its agent, else its first shell). Only counts while the
+    /// selected workspace still has that surface.
+    pub(super) surface: Option<SurfaceId>,
     pub(super) preview: Option<PanePreview>,
     pub(super) message: Option<String>,
     pub(super) loaded: bool,
@@ -69,6 +73,7 @@ impl ViewModel {
             snapshot: UiSnapshot::default(),
             selected: None,
             hint: 0,
+            surface: None,
             preview: None,
             message: None,
             loaded: false,
@@ -89,11 +94,25 @@ impl ViewModel {
         &self.snapshot
     }
 
-    /// The pane the selected workspace is previewed by (its agent's, or its shell's).
+    /// The pane the selected workspace is previewed by: the surface the user moved to, else
+    /// its agent's or its shell's.
     pub fn selected(&self) -> Option<PaneRef> {
-        self.selected_workspace()?
-            .anchor_pane()
-            .map(|p| p.pane_ref.clone())
+        let workspace = self.selected_workspace()?;
+        self.chosen_in(&workspace)
+            .map(|s| s.pane.pane_ref.clone())
+            .or_else(|| workspace.anchor_pane().map(|p| p.pane_ref.clone()))
+    }
+
+    /// The surface of `workspace` the user moved to, if it still has it.
+    pub(super) fn chosen_in<'a>(&self, workspace: &'a Workspace) -> Option<&'a Surface> {
+        let id = self.surface.as_ref()?;
+        workspace.surfaces.iter().find(|s| &s.id == id)
+    }
+
+    /// The surface the user moved to in the selected workspace (shown marked in the list).
+    pub fn chosen_surface(&self) -> Option<SurfaceId> {
+        let workspace = self.selected_workspace()?;
+        self.chosen_in(&workspace).map(|s| s.id.clone())
     }
 
     pub fn selected_key(&self) -> Option<&WorkspaceKey> {
@@ -225,6 +244,8 @@ impl ViewModel {
             Action::Up => self.step(-1),
             Action::Down => self.step(1),
             Action::Select(pane) => self.select(&pane),
+            Action::NextSurface => self.step_surface(1),
+            Action::PrevSurface => self.step_surface(-1),
             Action::Open(choice) => self.open(choice),
             Action::AddShell => self.add_shell(),
             Action::Prompt(input) => self.apply_prompt(input),
@@ -243,7 +264,7 @@ impl ViewModel {
             }
             Action::Switch => match self.restore_selected() {
                 Some(effect) => effect,
-                None => self.open(SurfaceChoice::Agent),
+                None => self.open_chosen(),
             },
             Action::SavedOp(op) => self.saved_op(op),
             Action::SavedPrompt(input) => self.apply_saved_prompt(input),

@@ -534,3 +534,110 @@ fn capital_s_on_a_workspace_without_a_shell_offers_its_first_and_s_still_opens_t
     };
     assert_eq!(p.pane_ref.pane.as_str(), "%5");
 }
+
+// --- several shells on the dashboard ---------------------------------------------------------
+
+/// `nga` with an agent (%1) and three shells (%2, %3, %4).
+fn nga_with_three_shells() -> UiSnapshot {
+    snap(vec![online(
+        "dev1",
+        vec![
+            pane("dev1", "nga", "%1", Busy),
+            shell_pane("dev1", "nga", "%2"),
+            shell_pane("dev1", "nga", "%3"),
+            shell_pane("dev1", "nga", "%4"),
+        ],
+    )])
+}
+
+fn opened(effect: Effect) -> flight_ui::PaneView {
+    let Effect::Switch(p) = effect else {
+        panic!("expected a switch, got {effect:?}")
+    };
+    p
+}
+
+#[test]
+fn every_shell_of_the_selected_workspace_is_listed() {
+    let vm = vm_with(nga_with_three_shells());
+    let text = flight_ui::render_to_string(&vm, 110, 30);
+    assert!(text.contains("s Shell "), "{text}");
+    assert!(text.contains("Shell 2"), "{text}");
+    assert!(text.contains("Shell 3"), "{text}");
+}
+
+#[test]
+fn tab_moves_through_the_surfaces_and_enter_opens_the_marked_one_without_making_any() {
+    let mut vm = vm_with(nga_with_three_shells());
+    // Nothing moved: Enter, a and s are what they always were.
+    assert!(opened(vm.apply(Action::Switch)).kind.is_agent());
+    assert_eq!(
+        opened(vm.apply(Action::Open(SurfaceChoice::Shell))).pane_ref,
+        pref("dev1", "%2")
+    );
+    vm.apply(Action::NextSurface);
+    vm.apply(Action::NextSurface);
+    assert_eq!(vm.chosen_surface(), Some(SurfaceId::new("s-%3")));
+    let text = flight_ui::render_to_string(&vm, 110, 30);
+    assert!(
+        text.lines()
+            .any(|l| l.contains('▸') && l.contains("Shell 2")),
+        "{text}"
+    );
+    assert!(text.contains("showing Shell 2"), "{text}");
+    // The marked shell is opened; `s` is still the first, `a` the agent.
+    assert_eq!(
+        opened(vm.apply(Action::Switch)).pane_ref,
+        pref("dev1", "%3")
+    );
+    assert_eq!(
+        opened(vm.apply(Action::Open(SurfaceChoice::Shell))).pane_ref,
+        pref("dev1", "%2")
+    );
+    assert!(opened(vm.apply(Action::Open(SurfaceChoice::Agent)))
+        .kind
+        .is_agent());
+    // Wrapping: past the last comes the default again, and back goes to the last.
+    vm.apply(Action::NextSurface);
+    vm.apply(Action::NextSurface);
+    assert_eq!(vm.chosen_surface(), None);
+    vm.apply(Action::PrevSurface);
+    assert_eq!(vm.chosen_surface(), Some(SurfaceId::new("s-%4")));
+    assert!(vm.prompt().is_none());
+}
+
+#[test]
+fn the_marked_surface_is_the_one_previewed_and_belongs_to_one_workspace() {
+    let mut s = nga_with_three_shells();
+    s.hosts[0].panes.push(pane("dev1", "web", "%9", Idle));
+    let mut vm = vm_with(s);
+    assert_eq!(vm.selected(), Some(pref("dev1", "%1")));
+    vm.apply(Action::NextSurface);
+    assert_eq!(vm.selected(), Some(pref("dev1", "%2")));
+    // Moving to another workspace drops the mark.
+    vm.apply(Action::Down);
+    assert_eq!(vm.chosen_surface(), None);
+    vm.apply(Action::Up);
+    assert_eq!(vm.chosen_surface(), None);
+}
+
+#[test]
+fn a_marked_shell_that_goes_away_leaves_the_default() {
+    let mut vm = vm_with(nga_with_three_shells());
+    vm.apply(Action::NextSurface);
+    vm.apply(Action::NextSurface);
+    let mut s = nga_with_three_shells();
+    s.hosts[0]
+        .panes
+        .retain(|p| p.pane_ref != pref("dev1", "%3"));
+    vm.apply_snapshot(s);
+    assert_eq!(vm.chosen_surface(), None);
+    assert!(opened(vm.apply(Action::Switch)).kind.is_agent());
+}
+
+#[test]
+fn tab_in_a_workspace_with_one_surface_does_nothing() {
+    let mut vm = vm_with(nga(Busy, false));
+    assert_eq!(vm.apply(Action::NextSurface), Effect::None);
+    assert_eq!(vm.chosen_surface(), None);
+}
