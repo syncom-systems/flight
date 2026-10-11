@@ -68,7 +68,7 @@ wait_windows() { # count
 quit_flight() {
   outer send-keys -t s q
   local i=0
-  while outer has-session -t s 2>/dev/null; do
+  while outer has-session -t s 2>/dev/null && [ "$(outer display-message -p -t s '#{pane_dead}' 2>/dev/null)" != 1 ]; do
     i=$((i + 1)); [ "$i" -le 100 ] || fail "flight did not quit"
     sleep 0.2
   done
