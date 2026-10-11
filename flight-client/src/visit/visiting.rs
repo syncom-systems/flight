@@ -59,7 +59,11 @@ fn present<T: Terminals>(
     let surfaces = terminals.surfaces(workspace);
     let mut store = LayoutStore::open(layout_dir);
     let layout = match &store {
-        Ok(store) => starting_layout(Some(store), workspace, &focus, |s| surfaces.is_known(s)),
+        Ok(store) => {
+            surfaces.without_doubles(starting_layout(Some(store), workspace, &focus, |s| {
+                surfaces.is_known(s)
+            }))
+        }
         Err(_) => side_by_side(&focus),
     };
     let outcome = terminals.presentation(workspace.clone(), surfaces, layout, held);
