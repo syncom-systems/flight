@@ -15,6 +15,7 @@ pub enum Origin {
 /// The user's declared intent for one workspace. Observed state (is it running, what are its
 /// ids) is never written into the declaration, except as clearly named hints.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceDefinition {
     pub key: ConfigKey,
     pub name: String,
