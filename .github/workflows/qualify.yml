@@ -6,10 +6,18 @@
 #
 #   tmux-versions   the full test suite against several distributions' tmux, to find the oldest
 #                   tmux Flight is verified on (the minimum in the release contract)
+#   clean-install   the packages of a Release run, verified (attestation) and walked through by
+#                   tools/smoke/journey.sh on a machine with no Rust toolchain and no Flight
+#                   state: Debian 12 in a container on Linux x86_64, and a fresh macOS runner
 name: Qualify
 
 on:
   workflow_dispatch:
+    inputs:
+      release_run:
+        description: "Run id of a Release workflow run whose packages to install and walk through (empty: skip the clean-install jobs)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -40,3 +48,68 @@ jobs:
           $SUDO apt-get install -y tmux python3 gcc
           tmux -V
       - run: cargo test --workspace
+
+  clean-install-linux:
+    name: clean install (Debian 12, x86_64)
+    if: inputs.release_run != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-x86_64-unknown-linux-gnu
+          run-id: ${{ inputs.release_run }}
+          github-token: ${{ github.token }}
+          path: pkg
+      - name: Verify provenance and unpack
+        run: |
+          set -eu
+          cd pkg
+          sha256sum flight-*.tar.gz
+          gh attestation verify flight-*.tar.gz --repo "$GITHUB_REPOSITORY"
+          tar -xzf flight-*.tar.gz
+          ls
+      - name: Walk through on a bare Debian 12
+        run: |
+          set -eu
+          bin=$(echo pkg/flight-*/flight)
+          docker run --rm -v "$PWD:/w" -w /w debian:12-slim bash -c \
+            "apt-get update -qq && apt-get install -y -qq tmux && tmux -V && ldd /w/$bin | head -5 && /w/$bin --version && /w/tools/smoke/journey.sh /w/$bin"
+
+  clean-install-macos:
+    name: clean install (macOS, Apple silicon)
+    if: inputs.release_run != ''
+    runs-on: macos-latest
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-aarch64-apple-darwin
+          run-id: ${{ inputs.release_run }}
+          github-token: ${{ github.token }}
+          path: pkg
+      - name: Verify provenance and unpack
+        run: |
+          set -eu
+          cd pkg
+          shasum -a 256 flight-*.tar.gz
+          gh attestation verify flight-*.tar.gz --repo "$GITHUB_REPOSITORY"
+          tar -xzf flight-*.tar.gz
+      - name: Install tmux
+        run: brew install tmux && tmux -V
+      - name: Walk through
+        run: |
+          set -eu
+          bin=$(echo "$PWD"/pkg/flight-*/flight)
+          "$bin" --version
+          tools/smoke/journey.sh "$bin"
