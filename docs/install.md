@@ -35,7 +35,7 @@ The first run sets everything up (about a second) and shows the dashboard; quitt
 
 ## Where things live
 
-Everything is under `~/.config/flight` (or `$XDG_CONFIG_HOME/flight`, or the directory in `$FLIGHT_CONFIG_DIR`, or `--config-dir`), one directory per role: `orchestrator/`, `node/`, `ui/`. Each holds that role's identity and trust settings; `node/` also holds `workspaces.toml` (your saved workspaces) with its snapshots, and `ui/` holds `layouts.toml`. Files with secrets are mode 0600. Logs of the single-machine mode are in `solo.log` next to them. Sessions live in the private tmux server `flight`, not in these files.
+Everything is under `~/.config/flight` (or `$XDG_CONFIG_HOME/flight`, or the directory in `$FLIGHT_CONFIG_DIR`, or `--config-dir`), one directory per role: `orchestrator/`, `node/`, `ui/`. Each holds that role's identity and trust settings; `node/` also holds `workspaces.toml` (your saved workspaces, with `workspaces.prev.toml` and your snapshots) and `resume.toml` (agent conversation references), and `ui/` gets `layouts.toml` once you arrange a presentation. Files with secrets are mode 0600. Logs of the single-machine mode are in `solo.log` next to them. Sessions live in the private tmux server `flight`, not in these files.
 
 ## Distributed mode
 
@@ -111,6 +111,7 @@ Your configuration (`~/.config/flight`: identities, trust, saved workspaces) is 
 
 - `flight: ... tmux` errors: `tmux -V` must work and be 3.3 or newer on that machine.
 - The single-machine mode did not come up: read `~/.config/flight/solo.log`.
+- `path must be shorter than SUN_LEN`: the configuration directory's path is too long for a Unix socket (about 90 characters at most); use a shorter `--config-dir`.
 - A node says it has not joined: run `flight node join` (the bundle is single-use and short-lived; make a fresh one).
 - A node shows Disconnected: `flight orchestrator node list`; check the node's log (`journalctl --user -u flight-node`, or the launchd log) and that the address in `--advertise` is reachable.
 - "saved workspaces ... newer than this Flight" or "unknown field": the file is left untouched; use the Flight that wrote it, or restore a backup.
