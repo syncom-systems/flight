@@ -87,6 +87,7 @@ fn run_node(args: &[String]) -> Result<(), String> {
         ],
         &["--no-terminal", "--restore"],
     )?;
+    crate::tmux_check::require_supported_tmux()?;
     let dir = node_dir(&config_dir(&args)?);
     let config = ConnectionConfig::load(&config_path(&dir)).map_err(|e| {
         format!("this machine has not joined an orchestrator yet ({e}); run `flight node join`")

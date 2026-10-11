@@ -8,6 +8,7 @@ mod node_cmd;
 mod orchestrator_cmd;
 mod roles;
 mod solo;
+mod tmux_check;
 mod ui_cmd;
 mod version;
 mod workspaces_cmd;
