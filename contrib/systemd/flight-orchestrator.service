@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: MIT
+#
+# Flight orchestrator as a per-user systemd service (Linux). Edit --listen and --advertise to
+# the address nodes and dashboards will use, then install per docs/install.md:
+#   mkdir -p ~/.config/systemd/user && cp flight-orchestrator.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now flight-orchestrator
+#   loginctl enable-linger "$USER"
+[Unit]
+Description=Flight orchestrator
+Documentation=https://github.com/syncom-systems/flight/blob/main/docs/install.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/flight orchestrator run --listen 0.0.0.0:7676 --advertise ORCHESTRATOR_HOST:7676
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
