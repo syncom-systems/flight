@@ -6,9 +6,16 @@ use crate::LoadError;
 /// and sets nothing else: the version number is advanced by [`run`].
 pub type Step = fn(&mut toml::Table) -> Result<(), String>;
 
-/// The upgrade path. Empty while version 1 is the only schema; a new schema version adds a step
-/// here and a test that loads the previous version's file.
-pub const STEPS: &[Step] = &[];
+/// The upgrade path. A new schema version adds a step here and a test that loads the previous
+/// version's file.
+pub const STEPS: &[Step] = &[v1_to_v2];
+
+/// Version 2 adds the optional `name` of a surface. Nothing to rewrite: a version 1 file is a
+/// valid version 2 file, and the version number moves so that a build which does not know
+/// `name` refuses the file instead of dropping the names.
+fn v1_to_v2(_: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
 
 /// Bring `table` from `from` to the version `steps` leads to.
 pub(crate) fn run(table: &mut toml::Table, from: u32, steps: &[Step]) -> Result<(), LoadError> {

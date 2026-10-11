@@ -11,6 +11,7 @@ const FILE: &str = "resume.toml";
 const SCHEMA: u32 = 1;
 
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct OnDisk {
     version: u32,
     #[serde(default, rename = "entry")]
@@ -209,6 +210,9 @@ mod tests {
             std::fs::read_to_string(d.join(FILE)).unwrap(),
             "not toml {{{"
         );
+        // A top-level key this build does not know is refused, not dropped at the next save.
+        std::fs::write(d.join(FILE), "version = 1\nfuture = true\n").unwrap();
+        assert!(ResumeStore::open(&d).is_err());
         let _ = std::fs::remove_dir_all(&d);
     }
 
