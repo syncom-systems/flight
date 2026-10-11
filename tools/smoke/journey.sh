@@ -16,9 +16,9 @@ BASE=$(mktemp -d "${SMOKE_BASE:-${TMPDIR:-/tmp}}/flsmoke.XXXXXX")
 OUTER="flsmoke-out-$$"
 INNER="flsmoke-in-$$"
 mkdir -p "$BASE/work"
-fake_claude "$BASE"
 
 . "$(dirname "$0")/lib.sh"
+fake_claude "$BASE"
 
 start_flight() {
   outer kill-server 2>/dev/null || true
