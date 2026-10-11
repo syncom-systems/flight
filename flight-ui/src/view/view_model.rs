@@ -4,7 +4,7 @@ use super::lists::{unavailable, workspaces};
 use super::opening::Opening;
 use super::SavedPrompt;
 use super::{
-    Action, Effect, FilterInput, FormOutcome, HostChoice, InputMode, NewSessionForm,
+    Action, Effect, FilterInput, FormOutcome, HostChoice, InputMode, NamePrompt, NewSessionForm,
     NewSessionRequest, ShellPrompt,
 };
 use crate::collect::CreateFailure;
@@ -32,6 +32,8 @@ pub struct ViewModel {
     pub(super) form: Option<NewSessionForm>,
     /// The companion-shell prompt, while it is open.
     pub(super) prompt: Option<ShellPrompt>,
+    /// The shell-name prompt, while it is open.
+    pub(super) name_prompt: Option<NamePrompt>,
     /// A question about a saved workspace, while it is open.
     pub(super) saved_prompt: Option<SavedPrompt>,
     /// A workspace just created: select it when it shows up in a snapshot.
@@ -79,6 +81,7 @@ impl ViewModel {
             loaded: false,
             form: None,
             prompt: None,
+            name_prompt: None,
             saved_prompt: None,
             pending: None,
             opening: None,
@@ -146,6 +149,11 @@ impl ViewModel {
         self.prompt.as_ref()
     }
 
+    /// The shell-name prompt, if it is open.
+    pub fn name_prompt(&self) -> Option<&NamePrompt> {
+        self.name_prompt.as_ref()
+    }
+
     /// The search text (empty: no filter).
     pub fn filter(&self) -> &str {
         &self.filter
@@ -168,6 +176,8 @@ impl ViewModel {
             } else {
                 InputMode::SavedConfirm
             }
+        } else if self.name_prompt.is_some() {
+            InputMode::Name
         } else if self.prompt.is_some() {
             InputMode::Prompt
         } else if self.help {
@@ -248,6 +258,8 @@ impl ViewModel {
             Action::PrevSurface => self.step_surface(-1),
             Action::Open(choice) => self.open(choice),
             Action::AddShell => self.add_shell(),
+            Action::NameShell => self.name_shell(),
+            Action::Name(input) => self.apply_name(input),
             Action::Prompt(input) => self.apply_prompt(input),
             Action::Search => {
                 self.searching = true;

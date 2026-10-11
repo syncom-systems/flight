@@ -117,6 +117,8 @@ fn surfaces_summary(vm: &ViewModel, w: &Workspace) -> String {
                 .count();
             Some(if surface.kind.is_agent() {
                 " · showing Agent".to_owned()
+            } else if let Some(label) = surface.label() {
+                format!(" · showing {label}")
             } else {
                 format!(" · showing Shell {}", shells_before.saturating_add(1))
             })

@@ -16,6 +16,7 @@ mod pane_info;
 mod parse;
 mod remove_error;
 mod remove_window;
+mod rename_window;
 mod runner;
 mod surface_mark;
 mod view;
@@ -35,6 +36,6 @@ pub use remove_error::RemoveError;
 pub use runner::{tmux_args, SystemRunner, TmuxOutput, TmuxRunner};
 pub use surface_mark::{
     ConfigMark, SurfaceMark, SurfaceTag, CONFIG_OPTION, CONFIG_SURFACE_OPTION, SURFACE_ID_OPTION,
-    SURFACE_OPTION, WORKSPACE_OPTION,
+    SURFACE_NAME_OPTION, SURFACE_OPTION, WORKSPACE_OPTION,
 };
 pub use view::{is_view_session, view_session_name, VIEW_SESSION_PREFIX};

@@ -25,6 +25,18 @@ pub struct SurfaceRequest {
     pub another: bool,
 }
 
+/// A validated request to give a surface a label, or to clear it (`name: None`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SurfaceRename {
+    /// This node. Set by the node from its own identity; never taken from a request.
+    pub host: HostId,
+    pub workspace_id: WorkspaceId,
+    pub surface_id: SurfaceId,
+    /// Already checked to be a clean label. Presentation only: the surface is found by
+    /// `surface_id`, never by this.
+    pub name: Option<String>,
+}
+
 /// A validated request to take one surface away from a workspace.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SurfaceRemoval {

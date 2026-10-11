@@ -134,6 +134,7 @@ impl WorkspacePersistence {
             provider: (mark.kind == SurfaceTag::Agent).then(|| "claude".to_owned()),
             skip_permissions: request.program == Program::ClaudeSkipPermissions,
             last_surface_id: Some(mark.surface_id.clone()),
+            name: None,
         };
         let def = WorkspaceDefinition {
             key: key.clone(),
@@ -248,6 +249,7 @@ impl WorkspacePersistence {
             provider: None,
             skip_permissions: false,
             last_surface_id: Some(mark.surface_id.clone()),
+            name: None,
         };
         self.mutate(|doc| {
             let Some(profile) = doc.active_mut() else {
@@ -294,6 +296,39 @@ impl WorkspacePersistence {
                         || s.last_surface_id.as_deref() == Some(surface_id))
             });
             w.surfaces.len() != before
+        })
+    }
+
+    /// Keep the label of a surface of a running workspace, if that workspace is a saved one:
+    /// the surface is found as `forget_surface` finds it. Nothing else changes.
+    pub(crate) fn name_surface(
+        &self,
+        workspace_config: &str,
+        workspace_id: &str,
+        surface_id: &str,
+        surface_config: &str,
+        name: Option<&str>,
+    ) -> Result<(), String> {
+        self.mutate(|doc| {
+            let Some(profile) = doc.active_mut() else {
+                return false;
+            };
+            let Some(w) = profile.workspaces.iter_mut().find(|w| {
+                (!workspace_config.is_empty() && w.key.as_str() == workspace_config)
+                    || w.last_workspace_id.as_deref() == Some(workspace_id)
+            }) else {
+                return false;
+            };
+            let Some(s) = w.surfaces.iter_mut().find(|s| {
+                (!surface_config.is_empty() && s.key.as_str() == surface_config)
+                    || s.last_surface_id.as_deref() == Some(surface_id)
+            }) else {
+                return false;
+            };
+            let name = name.map(str::to_owned);
+            let changed = s.name != name;
+            s.name = name;
+            changed
         })
     }
 

@@ -40,8 +40,13 @@ pub const AGENT_RESUME: &str = "agent_resume_v1";
 /// A peer without it keeps the one-shell rule, so it is never sent either.
 pub const MULTIPLE_SURFACES: &str = "multiple_surfaces_v1";
 
+/// A surface may carry a label the user gave it: `RenameSurface` sets or clears it and
+/// `PaneState.surface_name` publishes it. A peer without it is never sent a rename and shows no
+/// labels.
+pub const SURFACE_NAMES: &str = "surface_names_v1";
+
 /// Every capability this build knows about.
-pub const KNOWN: [&str; 11] = [
+pub const KNOWN: [&str; 12] = [
     PREVIEW,
     GUARDED_REVEAL,
     TERMINAL,
@@ -53,6 +58,7 @@ pub const KNOWN: [&str; 11] = [
     SAVED_ACTIONS,
     AGENT_RESUME,
     MULTIPLE_SURFACES,
+    SURFACE_NAMES,
 ];
 
 /// The offered capabilities that `supported` also contains, in offered order, without

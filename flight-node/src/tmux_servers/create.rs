@@ -6,7 +6,9 @@ use super::{failed, TmuxServers};
 use crate::agent_resume::{AgentLaunch, AgentSession};
 use crate::round::raw_placement;
 use crate::session_create::{create, new_id};
-use crate::{pane_agent, ControlError, SessionRequest, SurfaceRemoval, SurfaceRequest};
+use crate::{
+    pane_agent, ControlError, SessionRequest, SurfaceRemoval, SurfaceRename, SurfaceRequest,
+};
 use flight_proto::ErrorKindCode;
 use flight_state::{HostId, ServerId, SurfaceRole, WorkspaceId};
 use flight_tmux::{ConfigMark, CreateError, Launch, RemoveError, SurfaceMark, SurfaceTag};
@@ -44,6 +46,7 @@ impl TmuxServers {
         workspace_id: &str,
         surface: &ConfigKey,
         another: bool,
+        name: Option<&str>,
     ) -> Result<(SurfaceMark, String), ControlError> {
         let _one_at_a_time = self.surfaces.lock().unwrap_or_else(|p| p.into_inner());
         let id = WorkspaceId::new(workspace_id);
@@ -87,7 +90,15 @@ impl TmuxServers {
             &Launch::DefaultShell,
             &mark,
         ) {
-            Ok(_window) => Ok((mark, first.config_key.clone())),
+            Ok(_window) => {
+                // A restored shell gets its saved label back. Presentation only: if tmux
+                // cannot take it the shell is still there, and unlabelled.
+                if let Some(name) = name {
+                    let _ =
+                        tmux.rename_surface_window(&first.session_id, &mark.surface_id, Some(name));
+                }
+                Ok((mark, first.config_key.clone()))
+            }
             Err(CreateError::Exited) => Err(ControlError::new(
                 ErrorKindCode::ProgramUnavailable,
                 "the shell exited as soon as it started; nothing was created",
@@ -206,6 +217,57 @@ impl TmuxServers {
         Ok(())
     }
 
+    /// Give a surface a label, or clear it. The surface is found by its own id among the panes
+    /// the workspace publishes; the label is written to that window alone and is never used to
+    /// find anything, so two surfaces may carry the same one. A saved workspace keeps it.
+    pub(super) fn surface_rename(&self, request: &SurfaceRename) -> Result<(), ControlError> {
+        let _one_at_a_time = self.surfaces.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(name) = &request.name {
+            if flight_state::clean_label(name).as_deref() != Some(name.as_str()) {
+                return Err(ControlError::new(
+                    ErrorKindCode::InvalidRequest,
+                    "that is not a usable name",
+                ));
+            }
+        }
+        let (server, panes) = self.workspace_panes(&request.host, &request.workspace_id)?;
+        let pane = panes
+            .iter()
+            .find(|p| !p.surface_id.is_empty() && p.surface_id == request.surface_id.as_str())
+            .ok_or_else(|| {
+                ControlError::new(
+                    ErrorKindCode::UnknownPane,
+                    format!("no surface {} in this workspace", request.surface_id),
+                )
+            })?;
+        match self.tmux(&server)?.rename_surface_window(
+            &pane.session_id,
+            &pane.surface_id,
+            request.name.as_deref(),
+        ) {
+            Ok(()) => {}
+            Err(RemoveError::NotFound) => {
+                return Err(ControlError::new(
+                    ErrorKindCode::UnknownPane,
+                    "the surface is already gone",
+                ))
+            }
+            Err(RemoveError::OnlyWindow) => {}
+            Err(RemoveError::Tmux(e)) => return Err(failed(e)),
+        }
+        if let Some(p) = &self.persistence {
+            log_unsaved(p.name_surface(
+                &pane.config_key,
+                request.workspace_id.as_str(),
+                request.surface_id.as_str(),
+                &pane.config_surface,
+                request.name.as_deref(),
+            ));
+        }
+        self.retries.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+
     pub(super) fn surface_create(&self, request: &SurfaceRequest) -> Result<(), ControlError> {
         let key = mint_key()?;
         let (mark, workspace_config) = self.shell_marked(
@@ -213,6 +275,7 @@ impl TmuxServers {
             request.workspace_id.as_str(),
             &key,
             request.another,
+            None,
         )?;
         if let Some(p) = &self.persistence {
             log_unsaved(p.record_surface(

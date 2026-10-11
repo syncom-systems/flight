@@ -16,8 +16,9 @@ use flight_state::{PaneRef, SurfaceId};
 use flight_transport::{TerminalConnector, UiClient};
 use flight_trust::{ConnectionConfig, Fingerprint, Identity, TrustError};
 use flight_ui::{
-    Backend, CreateFailure, NewSessionRequest, NewSurfaceRequest, PanePreview, PaneView, Program,
-    SavedActionKind, SavedActionRequest, SurfaceChoice, UiSnapshot, WorkspaceKey,
+    Backend, CreateFailure, NameSurfaceRequest, NewSessionRequest, NewSurfaceRequest, PanePreview,
+    PaneView, Program, SavedActionKind, SavedActionRequest, SurfaceChoice, UiSnapshot,
+    WorkspaceKey,
 };
 use std::collections::HashMap;
 use std::path::Path;
@@ -362,6 +363,21 @@ impl Backend for OrchestratedBackend {
                 SurfaceChoice::Agent => SurfaceKindCode::Agent,
             } as i32,
             another: request.another,
+        });
+        self.inner
+            .runtime
+            .block_on(call(&self.inner.requests, kind, CREATE_TIMEOUT))
+            .map(drop)
+            .map_err(create_failure)
+    }
+
+    fn name_surface(&mut self, request: &NameSurfaceRequest) -> Result<(), CreateFailure> {
+        // Ids and the label, nothing else: the orchestrator finds the host, the node finds the
+        // window by the surface id, and the label selects nothing.
+        let kind = ck::Kind::RenameSurface(ck::RenameSurface {
+            workspace_id: request.workspace.as_str().to_owned(),
+            surface_id: request.surface.as_str().to_owned(),
+            name: request.name.clone().unwrap_or_default(),
         });
         self.inner
             .runtime

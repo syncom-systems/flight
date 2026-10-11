@@ -39,6 +39,8 @@ pub struct PaneInfo {
     /// definitions they were started for (ADR-008). Empty when started any other way.
     pub config_key: String,
     pub config_surface: String,
+    /// `@flight_surface_name` of the window: the label the user gave the surface, if any.
+    pub surface_name: String,
 }
 
 impl PaneInfo {

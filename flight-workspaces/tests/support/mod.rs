@@ -33,6 +33,7 @@ pub fn surface(kind: SurfaceKind) -> SurfaceSpec {
         provider: (kind == SurfaceKind::Agent).then(|| "claude".to_owned()),
         skip_permissions: false,
         last_surface_id: None,
+        name: None,
     }
 }
 
@@ -123,6 +124,7 @@ impl Executor for Fake {
                 surface_id: format!("s-{}-{}", w.next, s.key),
                 config_key: Some(s.key.clone()),
                 kind: s.kind,
+                name: None,
             })
             .collect();
         w.running
@@ -168,6 +170,7 @@ impl Executor for Fake {
             surface_id: format!("s-new-{surface}"),
             config_key: Some(surface.clone()),
             kind,
+            name: None,
         });
         w.started.push(format!("{}:{kind:?}", def.name));
         Ok(())

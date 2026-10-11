@@ -26,11 +26,12 @@ pub(crate) trait NodeTmux {
     ) -> Result<(ServerId, SurfaceMark, Option<AgentSession>), ControlError>;
 
     /// Add the companion shell to a running workspace, marked with the saved surface it
-    /// realizes. Returns the new mark and the saved key of the workspace, if it has one.
+    /// realizes, with the label it was saved with, if any. Returns the new mark and the saved key of the workspace, if it has one.
     fn create_shell_marked(
         &self,
         host: &HostId,
         workspace_id: &str,
         surface: &ConfigKey,
+        name: Option<&str>,
     ) -> Result<(SurfaceMark, String), ControlError>;
 }

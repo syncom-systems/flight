@@ -85,5 +85,6 @@ pub(crate) fn pane_state(
             SurfaceRole::Shell => SurfaceKindCode::Shell,
         } as i32,
         workspace_root: obs.placement.root(&obs.path).to_owned(),
+        surface_name: obs.placement.label().to_owned(),
     }
 }

@@ -49,6 +49,10 @@ pub struct PaneState {
     /// Where the workspace's surfaces start, on the node.
     #[prost(string, tag = "18")]
     pub workspace_root: String,
+    /// The label the user gave the surface (`surface_names_v1`); empty: none. Presentation
+    /// only: two surfaces may share one and nothing is addressed by it.
+    #[prost(string, tag = "19")]
+    pub surface_name: String,
 }
 
 impl PaneState {
@@ -96,6 +100,11 @@ impl Validate for PaneState {
             if !id.is_empty() && !flight_state::valid_id(id) {
                 return Err(Reject::OutOfRange(field));
             }
+        }
+        if !self.surface_name.is_empty()
+            && flight_state::clean_label(&self.surface_name).as_deref() != Some(&self.surface_name)
+        {
+            return Err(Reject::OutOfRange("pane_state.surface_name"));
         }
         if self.surface_kind != 0 {
             SurfaceKindCode::decode(self.surface_kind, "pane_state.surface_kind")?;

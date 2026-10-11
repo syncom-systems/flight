@@ -5,8 +5,8 @@
 //! after the tmux server, the node or the directory is lost (ADR-008).
 
 use flight_node::{
-    Control, NewSurface, Program, SessionEnv, SessionRequest, SurfaceRemoval, SurfaceRequest,
-    TmuxServers, WorkspacePersistence,
+    Control, NewSurface, Program, SessionEnv, SessionRequest, SurfaceRemoval, SurfaceRename,
+    SurfaceRequest, TmuxServers, WorkspacePersistence,
 };
 use flight_state::{HostId, ServerId, SurfaceId, WorkspaceId};
 use flight_tmux::{SystemRunner, Tmux, TmuxEndpoint};
@@ -237,6 +237,71 @@ fn several_shells_are_saved_each_removal_is_forgotten_and_a_restore_brings_back_
     live.recover(&go());
     live.recover(&go());
     assert_eq!(live.windows(), 3);
+}
+
+#[test]
+fn shell_names_are_saved_with_the_shell_cleared_when_asked_and_come_back_with_a_restore() {
+    let Some(mut live) = Live::start("names") else {
+        return;
+    };
+    let dir = live.dir("nga");
+    live.workspace("nga", &dir);
+    let id = first_workspace(&live).last_workspace_id.unwrap();
+    let shell = |another| {
+        live.servers.create_surface(&SurfaceRequest {
+            host: HostId::new(HOST),
+            workspace_id: WorkspaceId::new(&id),
+            kind: NewSurface::Shell,
+            another,
+        })
+    };
+    shell(false).unwrap();
+    shell(true).unwrap();
+    shell(true).unwrap();
+    let rename = |surface: &str, name: Option<&str>| {
+        live.servers
+            .rename_surface(&SurfaceRename {
+                host: HostId::new(HOST),
+                workspace_id: WorkspaceId::new(&id),
+                surface_id: SurfaceId::new(surface),
+                name: name.map(str::to_owned),
+            })
+            .unwrap();
+    };
+    let saved = first_workspace(&live);
+    let ids: Vec<String> = saved
+        .surfaces
+        .iter()
+        .map(|s| s.last_surface_id.clone().unwrap())
+        .collect();
+    // Two shells with the same label, one cleared again, the agent untouched.
+    rename(&ids[1], Some("logs"));
+    rename(&ids[2], Some("logs"));
+    rename(&ids[3], Some("tmp"));
+    rename(&ids[3], None);
+    let saved = first_workspace(&live);
+    let names: Vec<Option<&str>> = saved.surfaces.iter().map(|s| s.name.as_deref()).collect();
+    assert_eq!(names, [None, Some("logs"), Some("logs"), None]);
+    // The file keeps the label next to the surface's key, never in place of it.
+    let keys: std::collections::BTreeSet<_> =
+        saved.surfaces.iter().map(|s| s.key.clone()).collect();
+    assert_eq!(keys.len(), 4);
+    // Lost and restored: every shell comes back with its own label, and no other.
+    live.lose_tmux();
+    live.restart_node();
+    live.recover(&go());
+    live.recover(&go());
+    let mut labels: Vec<String> = live
+        .tmux
+        .list_panes()
+        .unwrap()
+        .into_iter()
+        .filter(|p| p.surface_kind == "shell")
+        .map(|p| p.surface_name)
+        .collect();
+    labels.sort();
+    assert_eq!(labels, ["", "logs", "logs"]);
+    assert_eq!(live.windows(), 4);
 }
 
 #[test]
@@ -1151,6 +1216,7 @@ mod resume {
                 provider: Some("codex".into()),
                 skip_permissions: false,
                 last_surface_id: None,
+                name: None,
             }],
             origin: Origin::Local,
             last_workspace_id: None,

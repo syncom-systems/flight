@@ -13,6 +13,13 @@ pub struct Surface {
     pub pane: PaneView,
 }
 
+impl Surface {
+    /// What the user called it, if they did.
+    pub fn label(&self) -> Option<&str> {
+        (!self.pane.label.is_empty()).then_some(self.pane.label.as_str())
+    }
+}
+
 impl From<&PaneView> for Surface {
     fn from(pane: &PaneView) -> Self {
         Self {

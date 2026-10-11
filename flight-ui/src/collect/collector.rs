@@ -104,6 +104,7 @@ impl Collector {
             window_id: p.info.window_id.clone(),
             session_id: p.info.session_id.clone(),
             session_path: p.info.session_path.clone(),
+            surface_name: p.info.surface_name.clone(),
         };
         let view = PaneView {
             pane_ref: p.pane_ref.clone(),
@@ -121,6 +122,7 @@ impl Collector {
                 SurfaceRole::Shell => SurfaceKind::Shell,
             },
             root: placement.root(&p.info.current_path).to_owned(),
+            label: placement.label().to_owned(),
         };
         self.resolved.insert(p.pane_ref.clone(), resolved);
         Some(view)

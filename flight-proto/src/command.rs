@@ -12,7 +12,7 @@ pub const MAX_PREVIEW_LINES: u32 = 2000;
 /// `CreateSession` names the host explicitly.
 #[derive(Clone, PartialEq, Eq, prost::Message)]
 pub struct Command {
-    #[prost(oneof = "command_kind::Kind", tags = "1, 3, 4, 6, 7, 8, 9, 10, 11")]
+    #[prost(oneof = "command_kind::Kind", tags = "1, 3, 4, 6, 7, 8, 9, 10, 11, 12")]
     pub kind: Option<command_kind::Kind>,
 }
 
@@ -119,6 +119,18 @@ pub mod command_kind {
         pub surface_id: String,
     }
 
+    /// Give a surface a label, or clear it with an empty `name` (`surface_names_v1`). Found by
+    /// its own id under its workspace's; the label is presentation and finds nothing.
+    #[derive(Clone, PartialEq, Eq, prost::Message)]
+    pub struct RenameSurface {
+        #[prost(string, tag = "1")]
+        pub workspace_id: String,
+        #[prost(string, tag = "2")]
+        pub surface_id: String,
+        #[prost(string, tag = "3")]
+        pub name: String,
+    }
+
     /// An operation on a workspace a node has saved (`saved_actions_v1`, ADR-008). Routed to
     /// `host`; the node finds the saved workspace by `config_key` among its own. No action
     /// creates, repairs or deletes anything on the filesystem.
@@ -155,6 +167,8 @@ pub mod command_kind {
         SavedAction(SavedAction),
         #[prost(message, tag = "11")]
         RemoveSurface(RemoveSurface),
+        #[prost(message, tag = "12")]
+        RenameSurface(RenameSurface),
     }
 }
 
@@ -174,7 +188,7 @@ impl Command {
             SendInput(c) => host_of(&c.pane_ref),
             KillPane(c) => host_of(&c.pane_ref),
             CreateSession(c) => Some(c.host.as_str()),
-            CreateSurface(_) | RemoveSurface(_) => None,
+            CreateSurface(_) | RemoveSurface(_) | RenameSurface(_) => None,
             SavedAction(c) => Some(c.host.as_str()),
         }
     }
@@ -244,6 +258,20 @@ impl Validate for Command {
                 }
                 if !flight_state::valid_id(&c.surface_id) {
                     return Err(Reject::OutOfRange("remove_surface.surface_id"));
+                }
+                Ok(())
+            }
+            RenameSurface(c) => {
+                if !flight_state::valid_id(&c.workspace_id) {
+                    return Err(Reject::OutOfRange("rename_surface.workspace_id"));
+                }
+                if !flight_state::valid_id(&c.surface_id) {
+                    return Err(Reject::OutOfRange("rename_surface.surface_id"));
+                }
+                if !c.name.is_empty()
+                    && flight_state::clean_label(&c.name).as_deref() != Some(&c.name)
+                {
+                    return Err(Reject::OutOfRange("rename_surface.name"));
                 }
                 Ok(())
             }

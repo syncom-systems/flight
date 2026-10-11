@@ -5,9 +5,9 @@ use std::collections::HashMap;
 
 /// Format string for `list-panes -F`. `pane_title` stays LAST so a tab inside a
 /// title cannot shift the other fields.
-pub const PANE_FORMAT: &str = "#{pane_id}\t#{session_name}\t#{window_name}\t#{window_id}\t#{window_index}\t#{pane_current_path}\t#{pane_pid}\t#{pane_active}\t#{window_active}\t#{session_attached}\t#{pane_current_command}\t#{window_activity}\t#{?@flight_session,1,0}\t#{@flight_workspace}\t#{@flight_surface_id}\t#{@flight_surface}\t#{session_path}\t#{session_id}\t#{@flight_config}\t#{@flight_config_surface}\t#{pane_title}";
+pub const PANE_FORMAT: &str = "#{pane_id}\t#{session_name}\t#{window_name}\t#{window_id}\t#{window_index}\t#{pane_current_path}\t#{pane_pid}\t#{pane_active}\t#{window_active}\t#{session_attached}\t#{pane_current_command}\t#{window_activity}\t#{?@flight_session,1,0}\t#{@flight_workspace}\t#{@flight_surface_id}\t#{@flight_surface}\t#{session_path}\t#{session_id}\t#{@flight_config}\t#{@flight_config_surface}\t#{@flight_surface_name}\t#{pane_title}";
 
-const FIELDS: usize = 21;
+const FIELDS: usize = 22;
 
 /// Parse `list-panes -F PANE_FORMAT` output, failing when panes were listed but none could be
 /// read (say so rather than report "no panes").
@@ -91,6 +91,7 @@ fn parse_line(line: &str) -> Option<PaneInfo> {
     let session_id = it.next()?.to_owned();
     let config_key = it.next()?.to_owned();
     let config_surface = it.next()?.to_owned();
+    let surface_name = it.next()?.to_owned();
     let pane_title = it.next()?.to_owned();
     Some(PaneInfo {
         pane_id,
@@ -115,6 +116,7 @@ fn parse_line(line: &str) -> Option<PaneInfo> {
         session_id,
         config_key,
         config_surface,
+        surface_name,
     })
 }
 
@@ -124,7 +126,7 @@ mod tests {
 
     fn line(title: &str, active: &str, attached: &str) -> String {
         format!(
-            "%3\tapi\tbuild\t@5\t2\t/tmp/x\t99\t{active}\t1\t{attached}\tclaude\t1700\t0\t\t\t\t/tmp/x\t$1\t\t\t{title}"
+            "%3\tapi\tbuild\t@5\t2\t/tmp/x\t99\t{active}\t1\t{attached}\tclaude\t1700\t0\t\t\t\t/tmp/x\t$1\t\t\t\t{title}"
         )
     }
 
@@ -142,7 +144,7 @@ mod tests {
 
     fn row(session: &str, pane_active: &str, window_active: &str, attached: &str) -> String {
         format!(
-            "%3\t{session}\tbuild\t@5\t2\t/tmp/x\t99\t{pane_active}\t{window_active}\t{attached}\tclaude\t1700\t0\t\t\t\t/tmp/x\t$1\t\t\tt"
+            "%3\t{session}\tbuild\t@5\t2\t/tmp/x\t99\t{pane_active}\t{window_active}\t{attached}\tclaude\t1700\t0\t\t\t\t/tmp/x\t$1\t\t\t\tt"
         )
     }
 
@@ -235,7 +237,7 @@ mod tests {
 
     #[test]
     fn workspace_markers_and_the_session_root_are_read() {
-        let marked = "%3\tapi\tshell\t@5\t2\t/tmp/x/sub\t99\t1\t1\t0\tzsh\t1700\t1\tw-1\ts-2\tshell\t/tmp/x\t$4\t\t\tt";
+        let marked = "%3\tapi\tshell\t@5\t2\t/tmp/x/sub\t99\t1\t1\t0\tzsh\t1700\t1\tw-1\ts-2\tshell\t/tmp/x\t$4\t\t\t\tt";
         let p = &parse_panes_output(marked)[0];
         assert_eq!(
             (
@@ -249,6 +251,18 @@ mod tests {
         );
         let unmarked = &parse_panes_output(&line("t", "1", "1"))[0];
         assert!(unmarked.workspace_id.is_empty() && unmarked.surface_kind.is_empty());
+    }
+
+    #[test]
+    fn a_surface_label_is_read_apart_from_the_window_name_and_may_repeat() {
+        let one = "%3\tapi\tshell-2\t@5\t2\t/tmp/x\t99\t1\t1\t0\tzsh\t1700\t1\tw-1\ts-2\tshell\t/tmp/x\t$4\t\t\tlogs\tt";
+        let two = one.replace("%3", "%4").replace("s-2", "s-3");
+        let panes = parse_panes_output(&format!("{one}\n{two}\n"));
+        assert_eq!(panes.len(), 2);
+        assert_eq!(panes[0].surface_name, "logs");
+        assert_eq!(panes[1].surface_name, "logs");
+        assert_eq!(panes[0].window_name, "shell-2");
+        assert_eq!(panes[0].pane_title, "t");
     }
 
     #[test]

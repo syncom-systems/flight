@@ -6,6 +6,7 @@ use super::header::header_line;
 use super::help::help_lines;
 use super::layout::{areas, Areas, CARD_BELOW, MIN_HEIGHT, MIN_WIDTH};
 use super::list_view::{list_view, ListView};
+use super::name_prompt_lines::name_prompt_lines;
 use super::preview_view::preview_view;
 use super::prompt_lines::prompt_lines;
 use super::saved_prompt_lines::{saved_prompt_lines, title as saved_title};
@@ -45,6 +46,14 @@ pub fn render(frame: &mut Frame, vm: &ViewModel) {
         draw_form(frame, form, area);
     } else if let Some(prompt) = vm.saved_prompt() {
         draw_saved_prompt(frame, prompt, area);
+    } else if let Some(prompt) = vm.name_prompt() {
+        modal(
+            frame,
+            area,
+            "Name a shell",
+            FORM_WIDTH,
+            name_prompt_lines(prompt),
+        );
     } else if let Some(prompt) = vm.prompt() {
         draw_prompt(frame, prompt, area);
     } else if vm.help_open() {
@@ -170,6 +179,7 @@ pub fn session_at(vm: &ViewModel, area: Rect, x: u16, y: u16) -> Option<PaneRef>
         || area.height < MIN_HEIGHT
         || vm.form().is_some()
         || vm.prompt().is_some()
+        || vm.name_prompt().is_some()
         || vm.saved_prompt().is_some()
         || vm.help_open()
     {

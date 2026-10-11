@@ -44,6 +44,7 @@ impl NodeTmux for EmptyNode {
         _host: &HostId,
         _workspace_id: &str,
         _surface: &ConfigKey,
+        _name: Option<&str>,
     ) -> Result<(SurfaceMark, String), ControlError> {
         unreachable!("a saved workspace with only an agent needs no shell")
     }

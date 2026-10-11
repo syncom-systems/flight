@@ -5,7 +5,10 @@
 
 use super::lists::workspaces;
 use super::view_model::PENDING_SNAPSHOTS;
-use super::{Effect, NewSurfaceRequest, PromptOutcome, ShellPrompt, SurfaceChoice, ViewModel};
+use super::{
+    Effect, NameInput, NameOutcome, NamePrompt, NameSurfaceRequest, NewSurfaceRequest,
+    PromptOutcome, ShellPrompt, SurfaceChoice, ViewModel,
+};
 use crate::collect::CreateFailure;
 use crate::snapshot::WorkspaceKey;
 use flight_state::SurfaceId;
@@ -92,6 +95,74 @@ impl ViewModel {
             ShellPrompt::new(&workspace)
         });
         Effect::None
+    }
+
+    /// `R`: ask what to call the marked shell, or the workspace's first when none is marked.
+    /// Only a shell is named; the name is presentation and changes nothing else.
+    pub(super) fn name_shell(&mut self) -> Effect {
+        self.pending = None;
+        if self.selected_saved().is_some() {
+            self.message = Some("A workspace that is not running has no shell to name.".to_owned());
+            return Effect::None;
+        }
+        let Some(workspace) = self.selected_workspace() else {
+            return Effect::None;
+        };
+        let target = match self.chosen_in(&workspace) {
+            Some(chosen) => Some(chosen),
+            None => workspace.shell(),
+        };
+        match target {
+            Some(surface) if surface.kind == crate::snapshot::SurfaceKind::Shell => {
+                self.name_prompt = Some(NamePrompt::new(&workspace, surface));
+            }
+            Some(_) => {
+                self.message = Some("Only a shell can be named; Tab moves to one.".to_owned());
+            }
+            None => {
+                self.message = Some(format!("{} has no shell to name.", workspace.name));
+            }
+        }
+        Effect::None
+    }
+
+    pub(super) fn apply_name(&mut self, input: NameInput) -> Effect {
+        let Some(prompt) = self.name_prompt.as_mut() else {
+            return Effect::None;
+        };
+        match prompt.handle(input) {
+            NameOutcome::None => Effect::None,
+            NameOutcome::Cancel => {
+                self.name_prompt = None;
+                Effect::None
+            }
+            NameOutcome::Submit(request) => Effect::NameSurface(request),
+        }
+    }
+
+    /// The answer to an [`Effect::NameSurface`]. Success closes the prompt (the new name shows
+    /// in the next snapshot); a refusal stays in the prompt.
+    pub fn apply_surface_named(
+        &mut self,
+        request: &NameSurfaceRequest,
+        result: Result<(), crate::collect::CreateFailure>,
+    ) {
+        match result {
+            Ok(()) => {
+                self.name_prompt = None;
+                self.message = Some(match &request.name {
+                    Some(name) => {
+                        format!("Named the shell \"{name}\" in {}.", request.workspace_name)
+                    }
+                    None => format!("Cleared the shell's name in {}.", request.workspace_name),
+                });
+            }
+            Err(failure) => {
+                if let Some(prompt) = self.name_prompt.as_mut() {
+                    prompt.fail(&failure);
+                }
+            }
+        }
     }
 
     /// The user is asked to confirm a new shell; the answer decides what happens next.

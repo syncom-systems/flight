@@ -7,7 +7,8 @@
 
 use flight_node::{
     fresh_incarnation, Control, ControlError, NewSurface, NodeCore, Program, ServerOutcome,
-    SessionEnv, SessionRequest, SurfaceRemoval, SurfaceRequest, TerminalSpec, TmuxServers,
+    SessionEnv, SessionRequest, SurfaceRemoval, SurfaceRename, SurfaceRequest, TerminalSpec,
+    TmuxServers,
 };
 use flight_proto::{ErrorKindCode, PaneState, SurfaceKindCode};
 use flight_state::{HostId, PaneId, ServerId, SurfaceId, WorkspaceId};
@@ -106,6 +107,20 @@ impl Live {
             host: HostId::new(HOST),
             workspace_id: WorkspaceId::new(workspace),
             surface_id: SurfaceId::new(surface),
+        })
+    }
+
+    fn rename(
+        &self,
+        workspace: &str,
+        surface: &str,
+        name: Option<&str>,
+    ) -> Result<(), ControlError> {
+        self.servers.rename_surface(&SurfaceRename {
+            host: HostId::new(HOST),
+            workspace_id: WorkspaceId::new(workspace),
+            surface_id: SurfaceId::new(surface),
+            name: name.map(str::to_owned),
         })
     }
 
@@ -543,4 +558,106 @@ fn the_default_tmux_server_is_never_used() {
         !text.contains("w-"),
         "a workspace appeared in the default server: {text}"
     );
+}
+
+#[test]
+fn a_shell_name_is_a_label_on_that_surface_only_and_survives_the_node_starting_again() {
+    let Some(mut live) = Live::start("names") else {
+        return;
+    };
+    live.workspace("nga", &live.dir("nga"));
+    let id = live.published()[0].workspace_id.clone();
+    live.add_shell(&id).unwrap();
+    live.add_another_shell(&id).unwrap();
+    let before = live.published();
+    let shells: Vec<_> = before
+        .iter()
+        .filter(|p| kind(p) == SurfaceKindCode::Shell)
+        .map(|p| p.surface_id.clone())
+        .collect();
+    // Two shells may carry the very same label; each is still found by its own id.
+    live.rename(&id, &shells[0], Some("logs")).unwrap();
+    live.rename(&id, &shells[1], Some("logs")).unwrap();
+    let named = live.published();
+    for p in &named {
+        let want = if shells.contains(&p.surface_id) {
+            "logs"
+        } else {
+            ""
+        };
+        assert_eq!(p.surface_name, want, "{}", p.surface_id);
+    }
+    // Nothing the backend addresses changed: same panes, pids, window names.
+    for old in &before {
+        let now = named
+            .iter()
+            .find(|p| p.surface_id == old.surface_id)
+            .unwrap();
+        assert_eq!(
+            (&now.pane_ref, now.pid, &now.window),
+            (&old.pane_ref, old.pid, &old.window)
+        );
+    }
+    // Renaming one leaves the other's label alone; clearing removes only that one.
+    live.rename(&id, &shells[1], Some("build")).unwrap();
+    live.rename(&id, &shells[0], None).unwrap();
+    let again = live.published();
+    let label = |s: &str| {
+        again
+            .iter()
+            .find(|p| p.surface_id == s)
+            .unwrap()
+            .surface_name
+            .clone()
+    };
+    assert_eq!(
+        (label(&shells[0]), label(&shells[1])),
+        (String::new(), "build".to_owned())
+    );
+    // A node that starts again finds the label where the backend kept it.
+    live.restart_node();
+    let label = |s: &str| {
+        live.published()
+            .iter()
+            .find(|p| p.surface_id == s)
+            .unwrap()
+            .surface_name
+            .clone()
+    };
+    assert_eq!(label(&shells[1]), "build");
+}
+
+#[test]
+fn a_name_is_never_used_to_find_a_surface_and_a_bad_one_changes_nothing() {
+    let Some(live) = Live::start("names-refused") else {
+        return;
+    };
+    live.workspace("nga", &live.dir("nga"));
+    let id = live.published()[0].workspace_id.clone();
+    live.add_shell(&id).unwrap();
+    let shell = live
+        .published()
+        .into_iter()
+        .find(|p| kind(p) == SurfaceKindCode::Shell)
+        .unwrap()
+        .surface_id;
+    live.rename(&id, &shell, Some("logs")).unwrap();
+    // The label is not an id: asking for the surface called "logs" finds nothing.
+    let err = live.rename(&id, "logs", Some("x")).unwrap_err();
+    assert_eq!(err.kind, ErrorKindCode::UnknownPane);
+    for bad in ["", "a\tb", " padded", "line\nbreak"] {
+        assert!(live.rename(&id, &shell, Some(bad)).is_err(), "{bad:?}");
+    }
+    for unknown in ["", "s-nope"] {
+        assert!(live.rename(&id, unknown, Some("x")).is_err());
+    }
+    let wrong_workspace = live.rename("w-nope", &shell, Some("x")).unwrap_err();
+    assert_eq!(wrong_workspace.kind, ErrorKindCode::UnknownWorkspace);
+    let label = live
+        .published()
+        .into_iter()
+        .find(|p| p.surface_id == shell)
+        .unwrap()
+        .surface_name;
+    assert_eq!(label, "logs");
 }

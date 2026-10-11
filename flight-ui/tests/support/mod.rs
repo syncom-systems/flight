@@ -28,6 +28,7 @@ pub fn pane(host: &str, session: &str, id: &str, state: AgentState) -> PaneView 
         surface: SurfaceId::new(format!("s-{id}")),
         kind: SurfaceKind::Agent(AgentKind::Claude),
         root: "/work".to_owned(),
+        label: String::new(),
     }
 }
 

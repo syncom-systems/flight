@@ -35,6 +35,8 @@ impl ListView {
 
 const STATE_W: usize = 8;
 const AGENT_W: usize = 8;
+/// Room for a surface's title (or the label the user gave it) in the selected workspace.
+const TITLE_W: usize = 14;
 
 pub fn list_view(vm: &ViewModel, width: usize, card: bool) -> ListView {
     let mut out = ListView {
@@ -294,6 +296,8 @@ impl Row<'_> {
             } else {
                 (" ", format!("Shell {}", i.saturating_add(1)))
             };
+            // The user's label, when they gave one, stands in for the number.
+            let title = shell.label().map_or(title, |l| fit(l, TITLE_W));
             lines.push(self.surface_line(letter, title, Some(shell), chosen.as_ref(), "", room));
         }
         lines
@@ -314,7 +318,7 @@ impl Row<'_> {
             Span::raw(if marked { " ▸ " } else { "   " }),
             Span::styled(key_letter.to_owned(), key()),
             Span::raw(" "),
-            Span::styled(pad(&title, 7), bold()),
+            Span::styled(pad(&title, TITLE_W), bold()),
         ];
         match surface {
             Some(s) => {

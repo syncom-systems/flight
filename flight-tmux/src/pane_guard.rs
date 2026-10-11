@@ -68,8 +68,8 @@ mod tests {
         }
     }
 
-    const ROWS: &str = "%1\ts\tw\t@1\t0\t/\t7\t1\t1\t1\tzsh\t1700\t0\t\t\t\t/\t$1\t\t\tt\n\
-                        %2\ts\tw\t@1\t1\t/\t9\t0\t0\t1\tzsh\t1700\t0\t\t\t\t/\t$1\t\t\tt\n";
+    const ROWS: &str = "%1\ts\tw\t@1\t0\t/\t7\t1\t1\t1\tzsh\t1700\t0\t\t\t\t/\t$1\t\t\t\tt\n\
+                        %2\ts\tw\t@1\t1\t/\t9\t0\t0\t1\tzsh\t1700\t0\t\t\t\t/\t$1\t\t\t\tt\n";
 
     #[test]
     fn the_pane_is_returned_only_while_it_runs_the_process_the_caller_saw() {

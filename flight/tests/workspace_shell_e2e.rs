@@ -656,3 +656,50 @@ fn a_second_shell_is_added_on_request_has_its_own_keys_and_is_removed_alone() {
         rig.seen("Workspaces") && rig.clients() == 0
     });
 }
+
+#[test]
+fn a_shell_is_named_from_the_dashboard_as_a_label_and_the_name_can_be_cleared() {
+    let mut rig = boot("names");
+    workspace_with_shell(&mut rig);
+    let option = |rig: &Rig| {
+        rig.tmux(&[
+            "display-message",
+            "-p",
+            "-t",
+            "=quick:shell",
+            "#{@flight_surface_name}",
+        ])
+        .trim()
+        .to_owned()
+    };
+    rig.send(b"\x00q");
+    wait("the dashboard again", || {
+        rig.seen("Workspaces") && rig.clients() == 0
+    });
+    // Asking is only a question until answered.
+    rig.send(b"R");
+    wait("the prompt", || rig.seen("Name a shell in quick"));
+    rig.send(b"\x1b");
+    wait("the prompt to close", || !rig.seen("Name a shell in quick"));
+    assert_eq!(option(&rig), "");
+    rig.send(b"R");
+    wait("the prompt", || rig.seen("Name a shell in quick"));
+    rig.send(b"build logs\r");
+    wait("the name on the dashboard", || {
+        rig.seen("Named the shell \"build logs\"") && rig.seen("s build logs")
+    });
+    assert_eq!(option(&rig), "build logs");
+    // It is a label: the window the backend addresses is still called shell.
+    assert!(rig
+        .tmux(&["list-windows", "-t", "=quick:", "-F", "#{window_name}"])
+        .lines()
+        .any(|w| w == "shell"));
+    // Clearing: the prompt starts from the name; erase it and confirm.
+    rig.send(b"R");
+    wait("the rename prompt", || {
+        rig.seen("Rename the shell \"build logs\"")
+    });
+    rig.send(&[0x7f; 10]);
+    rig.send(b"\r");
+    wait("the name to go", || option(&rig).is_empty());
+}

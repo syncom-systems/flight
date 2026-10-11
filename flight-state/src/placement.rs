@@ -14,9 +14,21 @@ pub struct RawPlacement {
     pub window_id: String,
     pub session_id: String,
     pub session_path: String,
+    /// The label the user gave the surface, as the backend holds it (empty: none).
+    pub surface_name: String,
 }
 
 impl RawPlacement {
+    /// The surface's label if the backend holds a well-formed one, else empty. Anything the
+    /// user did not put there through Flight (no trimming, a control character, too long) is
+    /// not shown or published.
+    pub fn label(&self) -> &str {
+        match crate::clean_label(&self.surface_name) {
+            Some(clean) if clean == self.surface_name => &self.surface_name,
+            _ => "",
+        }
+    }
+
     /// The workspace the pane is a surface of: the one Flight recorded, or, for a session that
     /// predates workspaces, one derived from the host and the session's backend identity.
     pub fn workspace(&self, host: &HostId, server: &ServerId) -> WorkspaceId {
@@ -72,6 +84,7 @@ mod tests {
             window_id: "@5".into(),
             session_id: "$3".into(),
             session_path: "/work".into(),
+            surface_name: String::new(),
         }
     }
 
@@ -118,6 +131,21 @@ mod tests {
             "legacy.ab12cd34.work.3"
         );
         assert!(p.surface(&host, &server).as_str().starts_with("legacy."));
+    }
+
+    #[test]
+    fn only_a_well_formed_label_is_a_label() {
+        let mut p = placed("w", "s", "shell");
+        for (stored, shown) in [
+            ("logs", "logs"),
+            ("", ""),
+            (" logs", ""),
+            ("a\tb", ""),
+            ("\u{7}", ""),
+        ] {
+            p.surface_name = stored.into();
+            assert_eq!(p.label(), shown, "{stored:?}");
+        }
     }
 
     #[test]

@@ -200,6 +200,7 @@ fn pane_view(key: &PaneRef, p: &PaneState) -> Option<PaneView> {
         } else {
             p.workspace_root.clone()
         },
+        label: p.surface_name.clone(),
     })
 }
 

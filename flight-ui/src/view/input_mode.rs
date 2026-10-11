@@ -9,6 +9,8 @@ pub enum InputMode {
     Form,
     /// The companion-shell prompt.
     Prompt,
+    /// Typing a name for a shell.
+    Name,
     Help,
     /// A saved-workspace question with buttons.
     SavedConfirm,

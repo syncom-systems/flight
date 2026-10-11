@@ -238,6 +238,9 @@ message PaneState {
   SurfaceKindCode surface_kind = 17;
   // The workspace's root directory on the node: where its surfaces start.
   string workspace_root = 18;
+  // The label the user gave the surface (surface_names_v1); empty: none. Presentation only: two
+  // surfaces may share one and nothing is addressed by it.
+  string surface_name = 19;
 }
 
 // One workspace a node has saved (ADR-008), with how it stands now. Declared intent plus the
@@ -386,6 +389,13 @@ message Command {
     string workspace_id = 1;
     string surface_id = 2;
   }
+  // Give a surface a label, or clear it with an empty `name` (surface_names_v1). The surface is
+  // found by its id under its workspace's; the label is never used to find anything.
+  message RenameSurface {
+    string workspace_id = 1;
+    string surface_id = 2;
+    string name = 3;
+  }
   // An operation on a workspace a node has saved (saved_actions_v1). Routed to `host`; the node
   // finds the saved workspace by `config_key` among its own and refuses any other.
   message SavedAction {
@@ -406,6 +416,7 @@ message Command {
     CreateSurface create_surface = 9;
     SavedAction saved_action = 10;
     RemoveSurface remove_surface = 11;
+    RenameSurface rename_surface = 12;
   }
 }
 
