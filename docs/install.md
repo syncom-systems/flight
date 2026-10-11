@@ -2,11 +2,11 @@
 
 # Installing Flight
 
-Supported platforms are listed in `docs/releases/v1.0-contract.md`: macOS on Apple silicon and Linux on x86_64 (glibc 2.36 or newer, for example Debian 12 or Ubuntu 22.04). Anything else is unsupported.
+Supported platforms are listed in `docs/releases/v1.0-contract.md`: macOS on Apple silicon and Linux on x86_64 with glibc 2.36 or newer and tmux 3.3 or newer (Debian 12, Ubuntu 24.04). Anything else is unsupported; in particular Ubuntu 22.04 and Debian 11 ship a tmux that is too old.
 
 ## Requirements
 
-- `tmux` 3.1 or newer on every machine that runs Flight (`tmux -V`). Flight uses its own private tmux server (`tmux -L flight`) and never touches yours.
+- `tmux` 3.3 or newer on every machine that runs Flight (`tmux -V`). Flight uses its own private tmux server (`tmux -L flight`) and never touches yours.
 - For distributed mode: a TCP route from each node and dashboard machine to the orchestrator (default port 7676). Nothing else: no SSH, no inbound port on nodes.
 
 macOS: `brew install tmux`. Debian/Ubuntu: `sudo apt install tmux`.
@@ -109,7 +109,7 @@ Your configuration (`~/.config/flight`: identities, trust, saved workspaces) is 
 
 ## Troubleshooting
 
-- `flight: ... tmux` errors: `tmux -V` must work and be 3.1 or newer on that machine.
+- `flight: ... tmux` errors: `tmux -V` must work and be 3.3 or newer on that machine.
 - The single-machine mode did not come up: read `~/.config/flight/solo.log`.
 - A node says it has not joined: run `flight node join` (the bundle is single-use and short-lived; make a fresh one).
 - A node shows Disconnected: `flight orchestrator node list`; check the node's log (`journalctl --user -u flight-node`, or the launchd log) and that the address in `--advertise` is reachable.
