@@ -50,6 +50,7 @@ sc enable --now flight-node
 wait_for "the node to be Online" 40 node_online
 "$FLIGHT" ui join "$(orch enrollment create)" --name ui1 >/dev/null
 outer new-session -d -x 120 -y 36 -s s "PATH=$BASE/bin:\$PATH '$FLIGHT' ui run --refresh 1"
+outer set-option -g remain-on-exit on
 wait_screen 'svc' 30
 # The node service has to find the stand-in agent: give it the PATH entry and restart.
 sc set-environment PATH="$BASE/bin:$PATH"

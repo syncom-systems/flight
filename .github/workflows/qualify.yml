@@ -176,4 +176,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: cargo install cargo-audit --locked --version 0.22.2
-      - run: cargo audit --deny warnings
+      # serial 0.4 (RUSTSEC-2017-0008, unmaintained, no vulnerability) arrives through
+      # portable-pty, which the node uses for terminals; accepted and listed in the readiness
+      # matrix. Any other advisory, vulnerability or warning fails this job.
+      - run: cargo audit --deny warnings --ignore RUSTSEC-2017-0008
