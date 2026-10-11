@@ -21,6 +21,9 @@ fail() {
   outer capture-pane -p -t s 2>/dev/null >&2 || echo "(no outer session)" >&2
   echo "--- inner windows ---" >&2
   inner list-windows -a 2>&1 >&2 || true
+  echo "--- processes and sockets ---" >&2
+  ps -eo pid,args 2>/dev/null | grep -E 'flight|tmux' | grep -v grep >&2 || true
+  ls -la "/tmp/tmux-$(id -u)" 2>&1 >&2 || true
   if command -v journalctl >/dev/null 2>&1 && [ -n "${XDG_RUNTIME_DIR:-}" ]; then
     echo "--- journal (user units) ---" >&2
     journalctl --user -n 40 --no-pager >&2 2>&1 || true
