@@ -2,6 +2,7 @@
 
 use super::surface_names::surface_id;
 use super::target::Target;
+use flight_present::Layout;
 use flight_state::{PaneRef, SurfaceId};
 use flight_ui::{SurfaceChoice, SurfaceKind, Workspace};
 
@@ -9,6 +10,8 @@ use flight_ui::{SurfaceChoice, SurfaceKind, Workspace};
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Entry {
     name: SurfaceId,
+    /// The surface's own id, which names it in a layout whatever else it is called.
+    id: Option<SurfaceId>,
     target: Target,
     label: String,
     /// The pane that realizes it now, when the workspace was read from a snapshot.
@@ -60,6 +63,7 @@ impl WorkspaceSurfaces {
             };
             entries.push(Entry {
                 pane: Some(surface.pane.pane_ref.clone()),
+                id: Some(surface.id.clone()),
                 name,
                 target,
                 label: if label.is_empty() {
@@ -85,6 +89,7 @@ impl WorkspaceSurfaces {
             .into_iter()
             .map(|choice| Entry {
                 pane: None,
+                id: None,
                 name: surface_id(choice),
                 label: surface_id(choice).to_string(),
                 target: Target {
@@ -106,6 +111,9 @@ impl WorkspaceSurfaces {
             .iter()
             .find(|e| &e.name == name)
             .map(|e| e.target.clone())
+            // A surface by its own id, even when it has become the oldest of its kind and is
+            // now also called `agent` or `shell`: a layout that named it keeps meaning it.
+            .or_else(|| self.by_id(name))
             // The agent and the shell can always be asked for, even when the workspace has
             // none now: the tile says so, and the surface may come back.
             .or_else(|| {
@@ -114,6 +122,35 @@ impl WorkspaceSurfaces {
                     surface: None,
                 })
             })
+    }
+
+    fn by_id(&self, id: &SurfaceId) -> Option<Target> {
+        self.entries
+            .iter()
+            .find(|e| e.id.as_ref() == Some(id))
+            .map(|e| Target {
+                choice: e.target.choice,
+                surface: Some(id.clone()),
+            })
+    }
+
+    /// A layout without the default names (`agent`, `shell`) that point at a surface the
+    /// layout also names by its own id: the same surface is shown once, as the user named it.
+    pub fn without_doubles(&self, layout: Layout) -> Layout {
+        let named: Vec<&SurfaceId> = layout.surfaces();
+        let doubles: Vec<SurfaceId> = self
+            .entries
+            .iter()
+            .filter(|e| e.target.surface.is_none())
+            .filter(|e| {
+                e.id.as_ref()
+                    .is_some_and(|id| named.contains(&id) && named.contains(&&e.name))
+            })
+            .map(|e| e.name.clone())
+            .collect();
+        doubles.iter().fold(layout, |layout, name| {
+            layout.remove(name).unwrap_or(layout)
+        })
     }
 
     /// What a layout calls the surface that `pane` realizes, if the workspace has it.
@@ -193,6 +230,7 @@ mod tests {
     use super::fixtures::*;
     use super::*;
     use flight_classify::AgentKind;
+    use flight_present::{Axis, Placement};
     use flight_ui::workspaces;
 
     fn surfaces_of(panes: Vec<flight_ui::PaneView>) -> WorkspaceSurfaces {
@@ -234,6 +272,49 @@ mod tests {
             pane("s-2", SurfaceKind::Shell, "logs", 2),
         ]);
         assert!(two.is_known(&SurfaceId::new("s-2")));
+    }
+
+    #[test]
+    fn a_surface_named_by_its_id_in_a_layout_is_still_it_after_it_becomes_the_oldest() {
+        // The shell that was called `shell` is gone: s-3 is now the oldest, so it is also
+        // `shell`. A layout saved while it was only s-3 must still find it.
+        let after = surfaces_of(vec![
+            pane("s-1", SurfaceKind::Agent(AgentKind::Claude), "agent", 1),
+            pane("s-3", SurfaceKind::Shell, "logs", 3),
+        ]);
+        assert!(after.is_known(&SurfaceId::new("s-3")));
+        let target = after.target(&SurfaceId::new("s-3")).unwrap();
+        assert_eq!(target.surface, Some(SurfaceId::new("s-3")));
+        assert_eq!(target.choice, SurfaceChoice::Shell);
+        // Ids of surfaces that do not exist are still not known.
+        assert!(!after.is_known(&SurfaceId::new("s-2")));
+    }
+
+    #[test]
+    fn a_layout_naming_a_surface_both_ways_shows_it_once_as_the_user_named_it() {
+        let after = surfaces_of(vec![
+            pane("s-1", SurfaceKind::Agent(AgentKind::Claude), "agent", 1),
+            pane("s-3", SurfaceKind::Shell, "logs", 3),
+        ]);
+        let (agent, shell, own) = (
+            SurfaceId::new("agent"),
+            SurfaceId::new("shell"),
+            SurfaceId::new("s-3"),
+        );
+        let both = Layout::single(agent.clone())
+            .split(&agent, Axis::Across, shell.clone(), Placement::After)
+            .unwrap()
+            .split(&shell, Axis::Down, own.clone(), Placement::After)
+            .unwrap();
+        let settled = after.without_doubles(both);
+        let names: Vec<String> = settled.surfaces().iter().map(ToString::to_string).collect();
+        assert_eq!(names, ["agent", "s-3"]);
+        // A layout that names the default only is left alone: the alias may resolve to the
+        // default surface.
+        let plain = Layout::single(agent.clone())
+            .split(&agent, Axis::Across, shell, Placement::After)
+            .unwrap();
+        assert_eq!(after.without_doubles(plain.clone()), plain);
     }
 
     #[test]
