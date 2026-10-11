@@ -41,6 +41,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let parsed = Args::parse(args, &["--config-dir", "--socket", "--listen"], &[])?;
+    crate::tmux_check::require_supported_tmux()?;
     let base = config_dir(&parsed)?;
     std::fs::create_dir_all(&base).map_err(|e| format!("{}: {e}", base.display()))?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
