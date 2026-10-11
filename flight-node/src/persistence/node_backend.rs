@@ -183,12 +183,13 @@ impl<S: NodeTmux + ?Sized> NodeBackend<'_, S> {
         if let (Some(session), None, true) = (session, &resume, first.kind == SurfaceKind::Agent) {
             self.remember(def, &first.key.clone(), &session);
         }
-        // The companion shell is a second step; if it fails the workspace is running and the
-        // next pass sees one surface missing and tries only that.
-        if let Some(shell) = def
+        // The shells are further steps, one per saved shell, so a restore brings back all of
+        // them at once. If one fails the workspace is running and the next pass sees only the
+        // missing ones and tries those.
+        for shell in def
             .surfaces
             .iter()
-            .find(|s| s.kind == SurfaceKind::Shell && s.key != first.key)
+            .filter(|s| s.kind == SurfaceKind::Shell && s.key != first.key)
         {
             let _ = self.start_surface(def, &shell.key, SurfaceKind::Shell, &mark.workspace_id);
         }
