@@ -149,3 +149,31 @@ jobs:
           new=$(echo "$PWD"/pkg/flight-*/flight)
           "$new" --version
           new/tools/smoke/upgrade.sh "$PWD/old/target/release/flight" "$new"
+
+  service-linux:
+    name: systemd user services (Linux x86_64)
+    if: inputs.release_run != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-x86_64-unknown-linux-gnu
+          run-id: ${{ inputs.release_run }}
+          github-token: ${{ github.token }}
+          path: pkg
+      - run: |
+          set -eu
+          tar -C pkg -xzf pkg/flight-*.tar.gz
+          tools/smoke/service_linux.sh "$(echo "$PWD"/pkg/flight-*/)"
+
+  dependency-audit:
+    name: dependency advisories (cargo audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: cargo install cargo-audit --locked --version 0.22.2
+      - run: cargo audit --deny warnings
