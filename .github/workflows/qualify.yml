@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: MIT
+#
+# Release qualification that is too slow or too broad for every pull request. Run by hand
+# (Actions -> Qualify -> Run workflow); results are recorded in docs/releases/v1.0-readiness.md
+# with the run URL.
+#
+#   tmux-versions   the full test suite against several distributions' tmux, to find the oldest
+#                   tmux Flight is verified on (the minimum in the release contract)
+name: Qualify
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  tmux-versions:
+    name: tests on ${{ matrix.name }}
+    runs-on: ${{ matrix.runs-on }}
+    container: ${{ matrix.container || null }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "Debian 11 (tmux 3.1c)", runs-on: ubuntu-latest, container: "rust:1-bullseye" }
+          - { name: "Ubuntu 22.04 (tmux 3.2a)", runs-on: ubuntu-22.04, container: "" }
+          - { name: "Debian 12 (tmux 3.3a)", runs-on: ubuntu-latest, container: "rust:1-bookworm" }
+          - { name: "Ubuntu 24.04 (tmux 3.4)", runs-on: ubuntu-24.04, container: "" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install tmux and test prerequisites
+        run: |
+          set -eu
+          SUDO=""; [ "$(id -u)" = 0 ] || SUDO=sudo
+          $SUDO apt-get update
+          $SUDO apt-get install -y tmux python3 gcc
+          tmux -V
+      - run: cargo test --workspace
