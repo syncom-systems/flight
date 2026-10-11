@@ -75,7 +75,7 @@ Linux (systemd, per-user):
     systemctl --user status flight-node
     journalctl --user -u flight-node -f
 
-For the orchestrator use `contrib/systemd/flight-orchestrator.service` after editing `--advertise`. The units set `KillMode=process` so that stopping or restarting the service does not kill the tmux server and your sessions with it.
+The unit sets `PATH` for the node (`~/.local/bin:/usr/local/bin:/usr/bin:/bin`): `tmux` and the agent program (`claude`) must be found there, or add their directory to `Environment=PATH=` in the unit; a workspace that cannot start its agent says `claude was not found on this node's PATH`. For the orchestrator use `contrib/systemd/flight-orchestrator.service` after editing `--advertise`. The units set `KillMode=process` so that stopping or restarting the service does not kill the tmux server and your sessions with it.
 
 ## Backup
 

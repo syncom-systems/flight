@@ -33,6 +33,8 @@ sc --version | head -1
 echo "2. install the binary and the units as docs/install.md says"
 mkdir -p "$HOME/.local/bin" "$HOME/.config/systemd/user"
 install -m 755 "$PKG/flight" "$FLIGHT"
+# The unit puts ~/.local/bin on the node's PATH, which is where an agent program has to be.
+cp "$BASE/bin/claude" "$HOME/.local/bin/claude"
 "$FLIGHT" --version
 cp "$PKG/contrib/systemd/"flight-*.service "$HOME/.config/systemd/user/"
 sed -i 's/ORCHESTRATOR_HOST/127.0.0.1/' "$HOME/.config/systemd/user/flight-orchestrator.service"
@@ -52,11 +54,6 @@ wait_for "the node to be Online" 40 node_online
 outer new-session -d -x 120 -y 36 -s s "PATH=$BASE/bin:\$PATH '$FLIGHT' ui run --refresh 1"
 outer set-option -g remain-on-exit on
 wait_screen 'svc' 30
-# The node service has to find the stand-in agent: give it the PATH entry and restart.
-sc set-environment PATH="$BASE/bin:$PATH"
-sc restart flight-node
-wait_for "the node to be Online" 40 node_online
-
 echo "4. a workspace made through the service survives killing the node"
 outer send-keys -t s n
 wait_screen 'New workspace'
@@ -81,7 +78,7 @@ quit_flight
 
 echo "6. uninstall leaves the data and the sessions"
 sc disable --now flight-node flight-orchestrator
-rm -f "$HOME/.config/systemd/user/flight-node.service" "$HOME/.config/systemd/user/flight-orchestrator.service" "$FLIGHT"
+rm -f "$HOME/.config/systemd/user/flight-node.service" "$HOME/.config/systemd/user/flight-orchestrator.service" "$FLIGHT" "$HOME/.local/bin/claude"
 sc daemon-reload
 [ -f "$HOME/.config/flight/node/workspaces.toml" ] || fail "the saved workspaces were removed"
 [ "$(windows)" = 1 ] || fail "uninstalling ended the session"
