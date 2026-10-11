@@ -25,7 +25,7 @@ on:
 
 # Cancel superseded runs on the same ref.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
