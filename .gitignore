@@ -27,3 +27,4 @@ rustc-ice-*.txt
 /ref/
 .DS_Store
 /.lan/
+/dist/
