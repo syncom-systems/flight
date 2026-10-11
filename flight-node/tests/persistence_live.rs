@@ -234,7 +234,9 @@ fn several_shells_are_saved_each_removal_is_forgotten_and_a_restore_brings_back_
     // Lost and restored: the agent and the two shells come back, and nothing else.
     live.lose_tmux();
     live.restart_node();
+    // One restore brings everything back; a second pass finds nothing missing.
     live.recover(&go());
+    assert_eq!(live.windows(), 3);
     live.recover(&go());
     assert_eq!(live.windows(), 3);
 }
@@ -289,7 +291,6 @@ fn shell_names_are_saved_with_the_shell_cleared_when_asked_and_come_back_with_a_
     // Lost and restored: every shell comes back with its own label, and no other.
     live.lose_tmux();
     live.restart_node();
-    live.recover(&go());
     live.recover(&go());
     let mut labels: Vec<String> = live
         .tmux
