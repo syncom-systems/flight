@@ -19,7 +19,8 @@ name: Release
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"]
-  # A dry run on any branch: same gates and the same packages, but no tag checks and no draft.
+  # A dry run on any branch: same gates, packages, attestations and draft, but no tag checks,
+  # and the draft is deleted at the end.
   workflow_dispatch:
 
 concurrency:
@@ -123,7 +124,6 @@ jobs:
   draft:
     name: draft release
     needs: [verify, build]
-    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the draft release
@@ -148,12 +148,25 @@ jobs:
       - name: Draft release
         run: |
           set -eu
-          if gh release view "v${VERSION}" > /dev/null 2>&1; then
-            echo "release v${VERSION} already exists; artifacts are never replaced" >&2
+          # A dry run (no tag) makes the same draft under a throwaway name, targeting the
+          # commit, proves it, and deletes it: a draft creates no tag.
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag="v${VERSION}"
+            flags="--verify-tag"
+            dry=false
+          else
+            tag="dryrun-${GITHUB_RUN_ID}"
+            flags="--target ${GITHUB_SHA}"
+            dry=true
+          fi
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "release $tag already exists; artifacts are never replaced" >&2
             exit 1
           fi
-          flags="--draft --verify-tag --title v${VERSION} --generate-notes"
-          if [ "${{ needs.verify.outputs.prerelease }}" = true ]; then flags="$flags --prerelease"; fi
+          flags="$flags --draft --title $tag --generate-notes"
+          if [ "${{ needs.verify.outputs.prerelease }}" = true ] || [ "$dry" = true ]; then
+            flags="$flags --prerelease"
+          fi
           {
             echo "Commit: \`${GITHUB_SHA}\`"
             echo
@@ -166,4 +179,9 @@ jobs:
             echo
             echo "Supported platforms and guarantees: docs/releases/v1.0-contract.md at this tag."
           } > notes.md
-          gh release create "v${VERSION}" $flags --notes-file notes.md dist/flight-*.tar.gz dist/SHA256SUMS
+          gh release create "$tag" $flags --notes-file notes.md dist/flight-*.tar.gz dist/SHA256SUMS
+          gh release view "$tag" --json isDraft,isPrerelease,tagName,targetCommitish,assets \
+            --jq '{tagName,isDraft,isPrerelease,targetCommitish,assets:[.assets[].name]}'
+          if [ "$dry" = true ]; then
+            gh release delete "$tag" --yes
+          fi
