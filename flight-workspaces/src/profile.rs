@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// A named arrangement of workspaces. Several can be kept; one is active.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Profile {
     pub name: String,
     #[serde(default, rename = "workspace", skip_serializing_if = "Vec::is_empty")]

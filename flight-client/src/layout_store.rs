@@ -13,6 +13,7 @@ const SCHEMA: u32 = 1;
 const MAX_LAYOUTS: usize = 64;
 
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct OnDisk {
     version: u32,
     #[serde(default, rename = "layout")]
@@ -20,6 +21,7 @@ struct OnDisk {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Entry {
     host: String,
     workspace: String,
@@ -165,6 +167,11 @@ mod tests {
         std::fs::write(d.join(FILE), "not toml [").unwrap();
         assert!(LayoutStore::open(&d).is_err());
         assert_eq!(std::fs::read_to_string(d.join(FILE)).unwrap(), "not toml [");
+        // A key this build does not know is refused too, not dropped at the next save.
+        let unknown = "version = 1\nfuture = true\n";
+        std::fs::write(d.join(FILE), unknown).unwrap();
+        assert!(LayoutStore::open(&d).is_err());
+        assert_eq!(std::fs::read_to_string(d.join(FILE)).unwrap(), unknown);
         let _ = std::fs::remove_dir_all(&d);
     }
 

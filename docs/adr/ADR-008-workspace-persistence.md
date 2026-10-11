@@ -41,7 +41,7 @@ More than one candidate, or two definitions wanting the same workspace, is `Ambi
 TOML (`toml` is already a dependency; the file is meant to be read and diffed), `schema_version` at the top, `[[profile]]` with `[[profile.workspace]]`, named profiles with one active. Rules:
 
 - Migration is a list of `table -> table` steps; the original is kept as `workspaces.v<N>.bak` before the upgraded file is written once.
-- A file from a **newer** schema is refused and never overwritten (a downgrade must not silently drop fields it cannot see). An unreadable file is reported and never overwritten or moved implicitly; `quarantine` moves it aside intact, on the user's say-so.
+- A file from a **newer** schema is refused and never overwritten (a downgrade must not silently drop fields it cannot see). The same holds for a file of the schema this build knows that carries a key it does not (`deny_unknown_fields` on every persisted struct; `save` re-parses what it would replace). The rule that makes this work: **any change to the shape of a persisted file moves its version**, with a migration step even when it rewrites nothing. Schema 2 (v1.0) is schema 1 plus the optional surface `name`; the original is kept as `workspaces.v1.bak` when a version 1 file is upgraded. `resume.toml` and `layouts.toml` follow the same rule with their own `version`. An unreadable file is reported and never overwritten or moved implicitly; `quarantine` moves it aside intact, on the user's say-so.
 - Unknown fields within a known version are ignored; a new field is additive or bumps the version.
 
 ### Crash-safe saving

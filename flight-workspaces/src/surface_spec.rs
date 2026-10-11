@@ -13,6 +13,7 @@ pub enum SurfaceKind {
 /// A surface the workspace should have. No command line, environment or credential is stored
 /// here: a definition can be shared, and what it may start is a separate trust decision.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SurfaceSpec {
     pub key: ConfigKey,
     pub kind: SurfaceKind,
