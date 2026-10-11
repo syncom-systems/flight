@@ -15,59 +15,16 @@ FLIGHT=${1:?usage: journey.sh /path/to/flight}
 BASE=$(mktemp -d "${SMOKE_BASE:-${TMPDIR:-/tmp}}/flsmoke.XXXXXX")
 OUTER="flsmoke-out-$$"
 INNER="flsmoke-in-$$"
-mkdir -p "$BASE/work" "$BASE/bin"
-printf '#!/bin/sh\nexec sleep 3600\n' > "$BASE/bin/claude"
-chmod +x "$BASE/bin/claude"
+mkdir -p "$BASE/work"
+fake_claude "$BASE"
 
-outer() { tmux -L "$OUTER" "$@"; }
-inner() { tmux -L "$INNER" "$@"; }
-cleanup() {
-  outer kill-server 2>/dev/null || true
-  inner kill-server 2>/dev/null || true
-  rm -rf "$BASE"
-}
-trap cleanup EXIT
+. "$(dirname "$0")/lib.sh"
 
-fail() {
-  echo "FAIL: $1" >&2
-  echo "--- screen ---" >&2
-  outer capture-pane -p -t s 2>/dev/null >&2 || echo "(no outer session)" >&2
-  echo "--- inner windows ---" >&2
-  inner list-windows -a 2>&1 >&2 || true
-  [ -f "$BASE/cfg/solo.log" ] && { echo "--- solo.log ---" >&2; tail -20 "$BASE/cfg/solo.log" >&2; }
-  exit 1
-}
-
-screen() { outer capture-pane -p -t s 2>/dev/null || true; }
-wait_screen() { # regex [seconds]
-  local i=0 limit=$(( ${2:-30} * 5 ))
-  until screen | grep -Eq -- "$1"; do
-    i=$((i + 1)); [ "$i" -le "$limit" ] || fail "screen never showed: $1"
-    sleep 0.2
-  done
-}
-windows() { inner list-windows -a -F '#{session_name}' 2>/dev/null | grep -vc '^flight-view' || true; }
-wait_windows() { # count
-  local i=0
-  until [ "$(windows)" = "$1" ]; do
-    i=$((i + 1)); [ "$i" -le 150 ] || fail "expected $1 windows, have $(windows)"
-    sleep 0.2
-  done
-}
 start_flight() {
   outer kill-server 2>/dev/null || true
   outer new-session -d -x 120 -y 36 -s s \
     "PATH=$BASE/bin:\$PATH FLIGHT_CONFIG_DIR=$BASE/cfg '$FLIGHT' solo --socket $INNER"
 }
-quit_flight() {
-  outer send-keys -t s q
-  local i=0
-  while outer has-session -t s 2>/dev/null; do
-    i=$((i + 1)); [ "$i" -le 100 ] || fail "flight did not quit"
-    sleep 0.2
-  done
-}
-
 echo "1. version"
 "$FLIGHT" --version | grep -Eq '^flight [0-9]+\.[0-9]+\.[0-9]+' || fail "--version"
 
