@@ -19,6 +19,7 @@ mod remove_window;
 mod rename_window;
 mod runner;
 mod surface_mark;
+mod tmux_version;
 mod view;
 
 pub use client::Tmux;
@@ -38,4 +39,5 @@ pub use surface_mark::{
     ConfigMark, SurfaceMark, SurfaceTag, CONFIG_OPTION, CONFIG_SURFACE_OPTION, SURFACE_ID_OPTION,
     SURFACE_NAME_OPTION, SURFACE_OPTION, WORKSPACE_OPTION,
 };
+pub use tmux_version::TmuxVersion;
 pub use view::{is_view_session, view_session_name, VIEW_SESSION_PREFIX};
