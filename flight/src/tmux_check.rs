@@ -29,7 +29,7 @@ fn judge(reported: &str) -> Result<(), String> {
 /// What to do about it, for the platform this build runs on.
 fn fix() -> &'static str {
     if cfg!(target_os = "macos") {
-        "install or update it with `brew install tmux` (or `brew upgrade tmux`), then run Flight again"
+        "install or update it with `brew install tmux` (or `brew upgrade tmux`), then run Flight again (details: docs/install.md)"
     } else {
         "install or update it with your package manager (`sudo apt install tmux` on Debian or \
          Ubuntu; releases older than Debian 12 and Ubuntu 24.04 ship a tmux that is too old, \
