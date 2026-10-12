@@ -40,10 +40,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: "Debian 11 (tmux 3.1c)", runs-on: ubuntu-latest, container: "rust:1-bullseye" }
-          - { name: "Ubuntu 22.04 (tmux 3.2a)", runs-on: ubuntu-22.04, container: "" }
-          - { name: "Debian 12 (tmux 3.3a)", runs-on: ubuntu-latest, container: "rust:1-bookworm" }
-          - { name: "Ubuntu 24.04 (tmux 3.4)", runs-on: ubuntu-24.04, container: "" }
+          - { name: "Debian 11 (tmux 3.1c)", runs-on: ubuntu-latest, container: "rust:1-bullseye", supported: false }
+          - { name: "Ubuntu 22.04 (tmux 3.2a)", runs-on: ubuntu-22.04, container: "", supported: false }
+          - { name: "Debian 12 (tmux 3.3a)", runs-on: ubuntu-latest, container: "rust:1-bookworm", supported: true }
+          - { name: "Ubuntu 24.04 (tmux 3.4)", runs-on: ubuntu-24.04, container: "", supported: true }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install tmux and test prerequisites
@@ -53,7 +53,20 @@ jobs:
           $SUDO apt-get update
           $SUDO apt-get install -y tmux python3 gcc
           tmux -V
-      - run: cargo test --workspace
+      - name: Supported tmux: the whole test suite
+        if: matrix.supported
+        run: cargo test --workspace
+      - name: Unsupported tmux: Flight refuses clearly and starts nothing
+        if: ${{ !matrix.supported }}
+        run: |
+          set -u
+          cargo build -p flight
+          if out=$(target/debug/flight solo --config-dir "$RUNNER_TEMP/refused" 2>&1); then
+            echo "Flight started on an unsupported tmux"; exit 1
+          fi
+          echo "$out"
+          echo "$out" | grep -q "older than the 3.3 Flight needs" || { echo "the refusal does not say why"; exit 1; }
+          [ ! -e "$RUNNER_TEMP/refused" ] || { echo "a refused start left files behind"; exit 1; }
 
   clean-install-linux:
     name: clean install (Debian 12, x86_64)
