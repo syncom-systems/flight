@@ -70,3 +70,7 @@ jobs:
           tmux -V
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
+      - name: Documentation matches the binary
+        run: |
+          cargo build -p flight
+          tools/docs/check.sh target/debug/flight

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 #
-# Installation as systemd user services on a clean Linux machine, following docs/install.md
+# Installation as systemd user services on a clean Linux machine, following docs/services.md
 # (readiness rows 10, 14). Run it on a disposable machine or CI runner: it installs units for the
 # invoking user, uses Flight's default tmux socket and default configuration directory, and
 # removes the units and the binary again at the end (configuration is kept, as documented).
@@ -30,7 +30,7 @@ sudo loginctl enable-linger "$USER"
 wait_for "the user manager" 30 test -S "$XDG_RUNTIME_DIR/systemd/private"
 sc --version | head -1
 
-echo "2. install the binary and the units as docs/install.md says"
+echo "2. install the binary and the units as docs/services.md says"
 mkdir -p "$HOME/.local/bin" "$HOME/.config/systemd/user"
 install -m 755 "$PKG/flight" "$FLIGHT"
 # The unit puts ~/.local/bin on the node's PATH, which is where an agent program has to be.
