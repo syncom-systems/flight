@@ -2,18 +2,22 @@
 
 # Installing Flight
 
-Supported platforms are listed in `docs/releases/v1.0-contract.md`: macOS on Apple silicon and Linux on x86_64 with glibc 2.36 or newer and tmux 3.3 or newer (Debian 12, Ubuntu 24.04). Anything else is unsupported; in particular Ubuntu 22.04 and Debian 11 ship a tmux that is too old.
+Supported: macOS on Apple silicon, and Linux on x86_64 with glibc 2.36 or newer (Debian 12, Ubuntu 24.04). Everything else is unsupported ([contract](https://github.com/syncom-systems/flight/blob/main/docs/releases/v1.0-contract.md)); in particular Ubuntu 22.04 and Debian 11 ship a tmux that is too old.
 
-## Requirements
+Flight needs **tmux 3.3 or newer** on every machine that runs it (`tmux -V`). It uses its own private tmux server and never touches yours.
 
-- `tmux` 3.3 or newer on every machine that runs Flight (`tmux -V`). Flight uses its own private tmux server (`tmux -L flight`) and never touches yours.
-- For distributed mode: a TCP route from each node and dashboard machine to the orchestrator (default port 7676). Nothing else: no SSH, no inbound port on nodes.
+## Homebrew (macOS and Linux)
 
-macOS: `brew install tmux`. Debian/Ubuntu: `sudo apt install tmux`.
+    brew install syncom-systems/flight/flight
+    flight --version
 
-## Install from a release
+This installs tmux too. Upgrade with `brew upgrade flight`.
 
-Download the tarball for your platform and `SHA256SUMS` from the release page, then verify both the checksum and the build provenance before running anything:
+## From a release download
+
+Use this if you do not use Homebrew. First install tmux 3.3 or newer (`brew install tmux`, or `sudo apt install tmux` on Debian 12 / Ubuntu 24.04).
+
+Download the tarball for your machine and `SHA256SUMS` from the [release page](https://github.com/syncom-systems/flight/releases), then verify both the checksum and the build provenance before running anything:
 
     sha256sum -c SHA256SUMS --ignore-missing        # macOS: shasum -a 256 -c SHA256SUMS --ignore-missing
     gh attestation verify flight-<version>-<target>.tar.gz --repo syncom-systems/flight
@@ -25,61 +29,27 @@ Download the tarball for your platform and `SHA256SUMS` from the release page, t
     install -m 755 flight-<version>-<target>/flight ~/.local/bin/flight
     flight --version                                # flight <version> (<commit>)
 
-Make sure `~/.local/bin` is on your `PATH`. On macOS a binary downloaded with a browser may carry a quarantine flag; `curl`/`gh release download` do not set it, and `xattr -d com.apple.quarantine ~/.local/bin/flight` clears it if it does.
+Make sure `~/.local/bin` is on your `PATH`. On macOS a binary downloaded with a browser may carry a quarantine flag; `curl` and `gh release download` do not set it, and `xattr -d com.apple.quarantine ~/.local/bin/flight` clears it if it does.
 
-## Single machine (the common case)
+## First run
 
     flight
 
-The first run sets everything up (about a second) and shows the dashboard; quitting stops what it started, and your sessions keep running. See `README.md` for the keys.
+The first run sets everything up in about a second and shows the dashboard. See the [README](../README.md) for the keys. On macOS, first turn off the system's use of `Ctrl-Space` ([troubleshooting](troubleshooting.md)).
+
+You also need the agent program you want to use, for Claude the `claude` command, installed and logged in on each machine where workspaces run.
+
+## More machines, services
+
+[two-machines.md](two-machines.md), [services.md](services.md).
 
 ## Where things live
 
 Everything is under `~/.config/flight` (or `$XDG_CONFIG_HOME/flight`, or the directory in `$FLIGHT_CONFIG_DIR`, or `--config-dir`), one directory per role: `orchestrator/`, `node/`, `ui/`. Each holds that role's identity and trust settings; `node/` also holds `workspaces.toml` (your saved workspaces, with `workspaces.prev.toml` and your snapshots) and `resume.toml` (agent conversation references), and `ui/` gets `layouts.toml` once you arrange a presentation. Files with secrets are mode 0600. Logs of the single-machine mode are in `solo.log` next to them. Sessions live in the private tmux server `flight`, not in these files.
 
-## Distributed mode
-
-One machine runs the orchestrator, every machine with agents runs a node, any machine can show the dashboard.
-
-    # orchestrator machine
-    flight orchestrator run --listen 0.0.0.0:7676 --advertise <address nodes will use>:7676
-    flight orchestrator enrollment create           # one-time bundle, expires (default shortly)
-
-    # each node machine (use the bundle once; it is useless afterwards)
-    flight node join '<bundle>' --name <node-name>
-    flight node run
-
-    # each dashboard machine
-    flight orchestrator enrollment create           # a fresh bundle, on the orchestrator
-    flight ui join '<bundle>' --name <ui-name>
-    flight ui
-
-    flight orchestrator trust list                  # who is trusted
-    flight orchestrator trust revoke <id>           # drop a machine at once
-
-Trust is established by the bundle: it carries the orchestrator's key fingerprint, which the joining machine pins, and a single-use token, which the orchestrator accepts once. Every later connection is mutual TLS 1.3 against pinned fingerprints.
-
-## Running as a service
-
-`flight node run` and `flight orchestrator run` are infrastructure: run them from the service manager, not from a shell or tmux (`contrib/launchd/README.md` explains why).
-
-macOS (launchd, per-user): follow `contrib/launchd/README.md`; the template is `contrib/launchd/name.flight.node.plist`.
-
-Linux (systemd, per-user):
-
-    mkdir -p ~/.config/systemd/user
-    cp contrib/systemd/flight-node.service ~/.config/systemd/user/
-    systemctl --user daemon-reload
-    systemctl --user enable --now flight-node
-    loginctl enable-linger "$USER"                  # run from boot and after logout
-    systemctl --user status flight-node
-    journalctl --user -u flight-node -f
-
-The unit sets `PATH` for the node (`~/.local/bin:/usr/local/bin:/usr/bin:/bin`): `tmux` and the agent program (`claude`) must be found there, or add their directory to `Environment=PATH=` in the unit; a workspace that cannot start its agent says `claude was not found on this node's PATH`. For the orchestrator use `contrib/systemd/flight-orchestrator.service` after editing `--advertise`. The units set `KillMode=process` so that stopping or restarting the service does not kill the tmux server and your sessions with it.
-
 ## Backup
 
-Stop nothing; copy the configuration directory (it is a handful of small files):
+Stop nothing; copy the configuration directory (a handful of small files):
 
     cp -R ~/.config/flight ~/flight-config-backup-$(date +%Y%m%d)
 
@@ -88,10 +58,9 @@ Stop nothing; copy the configuration directory (it is a handful of small files):
 ## Upgrade
 
 1. Back up (above).
-2. Verify the new tarball as in "Install from a release".
-3. Stop the services (`systemctl --user stop flight-node`, `launchctl bootout gui/$(id -u)/name.flight.node`); a single-machine `flight` is stopped by quitting it. Your tmux sessions keep running.
-4. Replace `~/.local/bin/flight` with the new binary (keep the old one as `flight.prev`).
-5. Start the services; `flight --version` confirms the version.
+2. Homebrew: `brew upgrade flight`. Otherwise verify the new tarball as above and replace `~/.local/bin/flight` (keep the old one as `flight.prev`).
+3. If Flight runs as a service, restart it (`systemctl --user restart flight-node`, or `launchctl kickstart -k gui/$(id -u)/name.flight.node`). Your tmux sessions keep running. A single-machine `flight` is restarted by quitting and starting it.
+4. `flight --version` confirms the version.
 
 If the saved workspaces use an older schema, the new version upgrades the file in place and keeps the original as `workspaces.v<N>.bak`. Within one major version, peers negotiate capabilities, so nodes, orchestrator and dashboards may be upgraded one at a time.
 
@@ -101,20 +70,7 @@ Stop the services, put `flight.prev` back, start them. A newer file format is ne
 
 ## Uninstall
 
-    systemctl --user disable --now flight-node       # or: launchctl bootout ...; remove the plist
-    rm ~/.config/systemd/user/flight-node.service
-    rm ~/.local/bin/flight
+    brew uninstall flight                            # or: rm ~/.local/bin/flight
+    # services, if you made them: see services.md
 
 Your configuration (`~/.config/flight`: identities, trust, saved workspaces) is **kept**; delete it yourself to forget everything, or keep it and a reinstall finds your workspaces again. Running sessions are kept too: they live in the private tmux server, which you end explicitly (this closes the sessions) with `tmux -L flight kill-server`.
-
-## Troubleshooting
-
-- `flight: ... tmux` errors: `tmux -V` must work and be 3.3 or newer on that machine.
-- The single-machine mode did not come up: read `~/.config/flight/solo.log`.
-- `path must be shorter than SUN_LEN`: the configuration directory's path is too long for a Unix socket (about 90 characters at most); use a shorter `--config-dir`.
-- A node says it has not joined: run `flight node join` (the bundle is single-use and short-lived; make a fresh one).
-- A node shows Disconnected: `flight orchestrator node list`; check the node's log (`journalctl --user -u flight-node`, or the launchd log) and that the address in `--advertise` is reachable.
-- "saved workspaces ... newer than this Flight" or "unknown field": the file is left untouched; use the Flight that wrote it, or restore a backup.
-- Ctrl-Space does nothing inside a session on macOS: the system uses it to switch input source and the terminal never sees it. Turn it off in System Settings, Keyboard, Keyboard Shortcuts, Input Sources ("Select the previous input source").
-- A bare `flight` (single-machine mode) uses the default configuration directory and the `flight` tmux server: it shows what is there, not a test setup. To keep a trial apart use `FLIGHT_CONFIG_DIR=<short dir> flight solo --socket <name>`.
-- Report a problem with `flight --version`, the OS, `tmux -V` and the relevant log.
