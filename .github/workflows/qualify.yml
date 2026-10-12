@@ -53,10 +53,10 @@ jobs:
           $SUDO apt-get update
           $SUDO apt-get install -y tmux python3 gcc
           tmux -V
-      - name: Supported tmux: the whole test suite
+      - name: "Supported tmux: the whole test suite"
         if: matrix.supported
         run: cargo test --workspace
-      - name: Unsupported tmux: Flight refuses clearly and starts nothing
+      - name: "Unsupported tmux: Flight refuses clearly and starts nothing"
         if: ${{ !matrix.supported }}
         run: |
           set -u
