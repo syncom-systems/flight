@@ -144,7 +144,11 @@ fn find_program(name: &str, env: &SessionEnv) -> Result<PathBuf, ControlError> {
         .ok_or_else(|| {
             refuse(
                 ErrorKindCode::ProgramUnavailable,
-                format!("{name} was not found on this node's PATH"),
+                format!(
+                    "{name} was not found on this node's PATH. Install it on that machine; if Flight \
+                     runs there as a service, add the directory holding it to the service's PATH \
+                     (docs/install.md, \"Running as a service\")"
+                ),
             )
         })
 }
