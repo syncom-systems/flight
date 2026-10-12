@@ -2,40 +2,59 @@
 
 # Flight
 
-A session manager with an agent dashboard, in Rust. tmux is the internal backend that keeps sessions alive; you never operate it. Session sources and connect rules follow sesh; the agent-state dashboard follows Fleet.
+Flight keeps your AI coding agents and shells running, and shows you all of them in one place. Start a workspace for a project, close your laptop, come back tomorrow: it is still there. If the machine restarts, Flight starts it again in the same folder and your Claude conversation picks up where it left off.
 
-## Try it
+It works on one machine, or across several machines you own.
 
-    cargo install --path flight    # or: cargo build, then target/debug/flight
-    flight
+## Quick start
 
-That is all. The first run sets Flight up on this machine (about a second), then shows the dashboard; quitting stops what it started, and your sessions keep running and are there next time. Press `n` to start a workspace.
+1. Install (macOS on Apple silicon, or Linux x86_64):
 
-Older, tmux-reading mode (no creating sessions): `flight --once`, `flight --ssh ALIAS`, `flight --socket NAME`.
+        brew install syncom-systems/flight/flight
 
-A **workspace** is your project on one machine: an agent (Claude) and, when you want one, a shell in the same directory. Press `n`, choose the machine and directory, Create. Enter or `a` opens the agent, `s` its shell (Flight offers to make one if there is none). Inside, `Ctrl-Space a` and `Ctrl-Space s` switch between them, `Ctrl-Space q` returns to the dashboard, and everything keeps running. Flight uses its own private tmux server and never touches your default one. Keys: arrows or j/k, Enter open, a agent, s shell, n new, / search, ? help, r refresh, q quit; the mouse selects (second click opens) and scrolls.
+   No Homebrew? See [docs/install.md](docs/install.md) for the download.
 
-## Distributed mode
+2. Start it:
 
-Run `flight node run` as a service (launchd/systemd), not from a shell or tmux: see `contrib/launchd/README.md` for why and how.
+        flight
 
+3. Press `n`, choose the folder of a project, press Create. Your agent opens. That is all there is to set up.
 
-One machine runs the orchestrator, every machine with agents runs a node, and any machine can show the dashboard. Everything is mutually authenticated (TLS 1.3, identities pinned by key fingerprint); nodes dial the orchestrator, so the orchestrator may live on this machine, on the LAN, or hosted, and the dashboard cannot tell which.
+When you want to leave, press `Ctrl-Space`, let go, then `q` to return to the dashboard, and `q` again to quit. Everything keeps running. Run `flight` any day later and it is all there.
 
-    # on the orchestrator machine
-    flight orchestrator run --listen 0.0.0.0:7676 --advertise 192.168.1.20:7676
-    flight orchestrator enrollment create          # prints a one-time bundle
+**Mac users, one thing first.** macOS uses `Ctrl-Space` to switch keyboard language, so Flight never receives it. Turn that off in System Settings, Keyboard, Keyboard Shortcuts, Input Sources ("Select the previous input source").
 
-    # on each machine with agents
-    flight node join <bundle> --name mini-2        # enroll (leaves nothing behind if it fails)
-    flight node run                                # observe tmux -L flight and report
+## What you will use
 
-    # wherever you want the dashboard
-    flight orchestrator enrollment create          # a fresh bundle
-    flight ui join <bundle> --name laptop
-    flight ui                                      # or: flight ui --once
+| Key | Does |
+|---|---|
+| `n` | New workspace: pick a machine and a folder |
+| Enter | Open the selected workspace (or start it again if it is saved) |
+| `a` / `s` | Open its agent / its shell (Flight offers to make a shell) |
+| `Ctrl-Space` then `a` / `s` / `q` | Inside a workspace: switch to agent / shell, or go back to the dashboard |
+| `/` | Search |
+| `?` | Help |
+| `q` | Quit (nothing stops) |
 
-    flight orchestrator trust list                 # who is trusted
-    flight orchestrator trust revoke <id>          # drop a machine at once
+A **workspace** is one project on one machine: an agent (Claude) and, if you want, any number of shells in the same folder.
 
-Settings live under `~/.config/flight/{orchestrator,node,ui}/` (override with `--config-dir`); each role has its own identity. See `docs/adr/ADR-002-node-orchestrator.md`.
+## When things happen
+
+- You close the dashboard, or the terminal: nothing stops. Run `flight` again.
+- The machine restarts, or Flight's background session is lost: the workspace shows as **saved**. Press Enter on it and it starts again in the same folder, and Claude continues the earlier conversation when it still exists. Shells start fresh (what was running in them is gone).
+
+More in [docs/concepts.md](docs/concepts.md).
+
+## More machines
+
+Run your agents on another machine and watch them from your laptop: [docs/two-machines.md](docs/two-machines.md).
+
+## Reference
+
+- [Install, upgrade, roll back, uninstall](docs/install.md)
+- [Two or more machines](docs/two-machines.md)
+- [Running as a service](docs/services.md)
+- [How it works: what survives what](docs/concepts.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [What is and is not supported in 1.0](https://github.com/syncom-systems/flight/blob/main/docs/releases/v1.0-contract.md), [known limitations](https://github.com/syncom-systems/flight/issues/91)
+- Security reports: [SECURITY.md](SECURITY.md)

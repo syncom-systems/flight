@@ -100,8 +100,10 @@ jobs:
           set -eu
           name="flight-${VERSION}-${{ matrix.target }}"
           mkdir -p "dist/$name"
-          cp target/release/flight LICENSE NOTICE.md THIRD_PARTY.md README.md "dist/$name/"
-          cp -R contrib docs/install.md "dist/$name/"
+          cp target/release/flight LICENSE NOTICE.md THIRD_PARTY.md README.md SECURITY.md "dist/$name/"
+          mkdir "dist/$name/docs"
+          cp docs/install.md docs/two-machines.md docs/services.md docs/concepts.md docs/troubleshooting.md "dist/$name/docs/"
+          cp -R contrib "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
       - name: Smoke test the packaged binary
         run: |
