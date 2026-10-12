@@ -115,4 +115,6 @@ Your configuration (`~/.config/flight`: identities, trust, saved workspaces) is 
 - A node says it has not joined: run `flight node join` (the bundle is single-use and short-lived; make a fresh one).
 - A node shows Disconnected: `flight orchestrator node list`; check the node's log (`journalctl --user -u flight-node`, or the launchd log) and that the address in `--advertise` is reachable.
 - "saved workspaces ... newer than this Flight" or "unknown field": the file is left untouched; use the Flight that wrote it, or restore a backup.
+- Ctrl-Space does nothing inside a session on macOS: the system uses it to switch input source and the terminal never sees it. Turn it off in System Settings, Keyboard, Keyboard Shortcuts, Input Sources ("Select the previous input source").
+- A bare `flight` (single-machine mode) uses the default configuration directory and the `flight` tmux server: it shows what is there, not a test setup. To keep a trial apart use `FLIGHT_CONFIG_DIR=<short dir> flight solo --socket <name>`.
 - Report a problem with `flight --version`, the OS, `tmux -V` and the relevant log.
