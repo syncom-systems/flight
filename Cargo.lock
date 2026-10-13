@@ -545,7 +545,7 @@ checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
 
 [[package]]
 name = "flight"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 dependencies = [
  "flight-client",
  "flight-control",
@@ -566,7 +566,7 @@ dependencies = [
 
 [[package]]
 name = "flight-classify"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 dependencies = [
  "flight-state",
  "regex",
@@ -574,7 +574,7 @@ dependencies = [
 
 [[package]]
 name = "flight-client"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 dependencies = [
  "crossterm",
  "flight-classify",
@@ -599,7 +599,7 @@ dependencies = [
 
 [[package]]
 name = "flight-control"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 dependencies = [
  "flight-state",
  "flight-tmux",
@@ -607,7 +607,7 @@ dependencies = [
 
 [[package]]
 name = "flight-load"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 dependencies = [
  "flight-classify",
  "flight-client",
@@ -623,7 +623,7 @@ dependencies = [
 
 [[package]]
 name = "flight-node"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 dependencies = [
  "flight-classify",
  "flight-proto",
@@ -638,7 +638,7 @@ dependencies = [
 
 [[package]]
 name = "flight-orchestrator"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 dependencies = [
  "flight-classify",
  "flight-node",
@@ -649,7 +649,7 @@ dependencies = [
 
 [[package]]
 name = "flight-present"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 dependencies = [
  "flight-state",
  "serde",
@@ -658,7 +658,7 @@ dependencies = [
 
 [[package]]
 name = "flight-proto"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 dependencies = [
  "flight-state",
  "prost",
@@ -667,19 +667,19 @@ dependencies = [
 
 [[package]]
 name = "flight-sessions"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 
 [[package]]
 name = "flight-state"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 
 [[package]]
 name = "flight-tmux"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 
 [[package]]
 name = "flight-transport"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 dependencies = [
  "flight-classify",
  "flight-node",
@@ -703,7 +703,7 @@ dependencies = [
 
 [[package]]
 name = "flight-trust"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 dependencies = [
  "base64 0.22.1",
  "flight-state",
@@ -718,7 +718,7 @@ dependencies = [
 
 [[package]]
 name = "flight-ui"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 dependencies = [
  "crossterm",
  "flight-classify",
@@ -730,7 +730,7 @@ dependencies = [
 
 [[package]]
 name = "flight-workspaces"
-version = "1.0.1"
+version = "1.1.0-rc.1"
 dependencies = [
  "flight-state",
  "getrandom 0.2.17",
