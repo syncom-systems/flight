@@ -12,6 +12,8 @@ pub trait Machine {
     fn which(&self, program: &str) -> bool;
     /// The output of `tmux -V`, if tmux runs.
     fn tmux_version(&self) -> Option<String>;
+    /// Whether setup is running as the administrator (then `sudo` is neither needed nor used).
+    fn is_root(&self) -> bool;
     /// Run the step with the terminal attached (output shown, `sudo` able to ask for a
     /// password). The exit code, or why it could not start.
     fn run(&mut self, step: &Step) -> Result<i32, String>;
@@ -43,6 +45,13 @@ impl Machine for SystemMachine {
         out.status
             .success()
             .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+    }
+
+    fn is_root(&self) -> bool {
+        Command::new("id")
+            .arg("-u")
+            .output()
+            .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "0")
     }
 
     fn run(&mut self, step: &Step) -> Result<i32, String> {

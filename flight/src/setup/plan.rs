@@ -19,9 +19,21 @@ const BREW_UPGRADE_TMUX: Step = Step {
     what: "update tmux with Homebrew",
     argv: &["brew", "upgrade", "tmux"],
 };
-const APT_TMUX: Step = Step {
+const APT_UPDATE_SUDO: Step = Step {
+    what: "refresh apt's package lists (asks for your password through sudo)",
+    argv: &["sudo", "apt-get", "update"],
+};
+const APT_TMUX_SUDO: Step = Step {
     what: "install tmux with apt (asks for your password through sudo)",
     argv: &["sudo", "apt-get", "install", "-y", "tmux"],
+};
+const APT_UPDATE_ROOT: Step = Step {
+    what: "refresh apt's package lists",
+    argv: &["apt-get", "update"],
+};
+const APT_TMUX_ROOT: Step = Step {
+    what: "install tmux with apt",
+    argv: &["apt-get", "install", "-y", "tmux"],
 };
 const BREW_CLAUDE: Step = Step {
     what: "install Claude Code with Homebrew",
@@ -51,8 +63,15 @@ pub fn plan(findings: &Findings, platform: Platform, wanted: &[Agent]) -> Plan {
                 } else {
                     BREW_TMUX
                 });
-            } else if platform == Platform::Linux && findings.apt {
-                plan.steps.push(APT_TMUX);
+            } else if platform == Platform::Linux
+                && findings.apt
+                && (findings.root || findings.sudo)
+            {
+                if findings.root {
+                    plan.steps.extend([APT_UPDATE_ROOT, APT_TMUX_ROOT]);
+                } else {
+                    plan.steps.extend([APT_UPDATE_SUDO, APT_TMUX_SUDO]);
+                }
                 plan.notes.push(
                     "apt installs tmux 3.3 or newer only on Debian 12, Ubuntu 24.04 and newer; \
                      setup checks the version afterwards"
@@ -115,6 +134,8 @@ mod tests {
             codex: false,
             brew,
             apt,
+            sudo: apt,
+            root: false,
         }
     }
 
@@ -145,8 +166,23 @@ mod tests {
     fn linux_without_homebrew_uses_apt_with_sudo_shown() {
         let f = found(TmuxStatus::Missing, true, false, true);
         let p = plan(&f, Platform::Linux, &[Agent::Claude]);
-        assert_eq!(p.steps, vec![APT_TMUX]);
-        assert_eq!(p.steps[0].command_line(), "sudo apt-get install -y tmux");
+        assert_eq!(p.steps, vec![APT_UPDATE_SUDO, APT_TMUX_SUDO]);
+        assert_eq!(p.steps[0].command_line(), "sudo apt-get update");
+        assert_eq!(p.steps[1].command_line(), "sudo apt-get install -y tmux");
+    }
+
+    #[test]
+    fn as_root_there_is_no_sudo_and_without_either_there_is_no_apt_step() {
+        let mut f = found(TmuxStatus::Missing, true, false, true);
+        f.root = true;
+        f.sudo = false;
+        let p = plan(&f, Platform::Linux, &[]);
+        assert_eq!(p.steps, vec![APT_UPDATE_ROOT, APT_TMUX_ROOT]);
+        assert!(!p.steps.iter().any(|s| s.argv.contains(&"sudo")));
+        f.root = false;
+        let p = plan(&f, Platform::Linux, &[]);
+        assert!(p.steps.is_empty());
+        assert!(p.notes.iter().any(|n| n.contains("package manager")));
     }
 
     #[test]
@@ -179,11 +215,14 @@ mod tests {
         for s in [
             BREW_TMUX,
             BREW_UPGRADE_TMUX,
-            APT_TMUX,
+            APT_UPDATE_SUDO,
+            APT_TMUX_SUDO,
+            APT_UPDATE_ROOT,
+            APT_TMUX_ROOT,
             BREW_CLAUDE,
             BREW_CODEX,
         ] {
-            assert!(s.argv.len() >= 3, "{s:?}");
+            assert!(s.argv.len() >= 2, "{s:?}");
             assert!(!s.argv.iter().any(|a| a.contains(['|', ';', '&', '$', '`'])));
             assert!(s.what.len() > 8);
         }
