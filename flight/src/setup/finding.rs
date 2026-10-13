@@ -20,6 +20,8 @@ pub struct Findings {
     pub codex: bool,
     pub brew: bool,
     pub apt: bool,
+    pub sudo: bool,
+    pub root: bool,
 }
 
 impl Findings {
@@ -39,6 +41,8 @@ impl Findings {
             codex: machine.which(Agent::Codex.program()),
             brew: machine.which("brew"),
             apt: machine.which("apt-get"),
+            sudo: machine.which("sudo"),
+            root: machine.is_root(),
         }
     }
 

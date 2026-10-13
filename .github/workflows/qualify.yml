@@ -20,7 +20,7 @@ on:
         required: false
         default: ""
       only:
-        description: "Run only this job group while debugging (service, multinode, launchd, homebrew); empty runs everything"
+        description: "Run only this job group while debugging (service, multinode, launchd, homebrew, setup); empty runs everything"
         required: false
         default: ""
 
@@ -254,6 +254,27 @@ jobs:
         if: runner.os == 'Linux'
         run: echo /home/linuxbrew/.linuxbrew/bin >> "$GITHUB_PATH"
       - run: tools/release/check-homebrew.sh "$(echo "$PWD"/pkg/flight-*.tar.gz)"
+
+  setup-linux:
+    name: guided setup on a bare Debian 12 (x86_64)
+    if: inputs.release_run != '' && (inputs.only == '' || inputs.only == 'setup')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-x86_64-unknown-linux-gnu
+          run-id: ${{ inputs.release_run }}
+          github-token: ${{ github.token }}
+          path: pkg
+      - run: |
+          set -eu
+          tar -C pkg -xzf pkg/flight-*.tar.gz
+          bin=$(echo pkg/flight-*/flight)
+          docker run --rm -v "$PWD:/w" -w /w debian:12-slim bash -c "/w/tools/smoke/setup_linux.sh /w/$bin"
 
   dependency-audit:
     name: dependency advisories (cargo audit)
