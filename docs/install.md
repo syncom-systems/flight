@@ -31,6 +31,12 @@ Download the tarball for your machine and `SHA256SUMS` from the [release page](h
 
 Make sure `~/.local/bin` is on your `PATH`. On macOS a binary downloaded with a browser may carry a quarantine flag; `curl` and `gh release download` do not set it, and `xattr -d com.apple.quarantine ~/.local/bin/flight` clears it if it does.
 
+## Guided setup
+
+`flight setup` looks at what Flight needs (tmux 3.3 or newer, an agent program such as `claude`) and offers to install what is missing. For each missing piece it shows the exact command and runs it **only if you answer yes**; nothing is installed otherwise, and Homebrew itself is never installed (it points you to https://brew.sh). It also asks which agents you work with and remembers the answer in `settings.toml` in the configuration folder. A plain `flight` offers it once, when tmux or every agent program is missing and it is talking to a terminal.
+
+To see what is missing and the commands, without being asked anything and without anything being run: `flight setup --check`. To turn the offer off: `flight --no-setup` or `FLIGHT_NO_SETUP=1`. Without a terminal (scripts, services) Flight never asks and never installs; it behaves exactly as before and refuses clearly when tmux is missing.
+
 ## First run
 
     flight

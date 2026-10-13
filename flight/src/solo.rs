@@ -16,7 +16,7 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-pub const USAGE: &str = "usage: flight [solo] [--config-dir DIR] [--socket NAME]
+pub const USAGE: &str = "usage: flight [solo] [--config-dir DIR] [--socket NAME] [--no-setup]
 
   Runs Flight on this machine: starts the orchestrator and the node in the background,
   joins them and the dashboard the first time, and shows the dashboard. Quitting stops
@@ -40,9 +40,16 @@ pub fn run(args: &[String]) -> Result<(), String> {
         println!("{USAGE}");
         return Ok(());
     }
-    let parsed = Args::parse(args, &["--config-dir", "--socket", "--listen"], &[])?;
-    crate::tmux_check::require_supported_tmux()?;
+    let parsed = Args::parse(
+        args,
+        &["--config-dir", "--socket", "--listen"],
+        &["--no-setup"],
+    )?;
     let base = config_dir(&parsed)?;
+    // Offered only to a person at a terminal, once, and only when something is missing; the
+    // check below is what refuses when it is still not there.
+    crate::setup::offer_before_start(&base, &parsed);
+    crate::tmux_check::require_supported_tmux()?;
     std::fs::create_dir_all(&base).map_err(|e| format!("{}: {e}", base.display()))?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let log = base.join("solo.log");

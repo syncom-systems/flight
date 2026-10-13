@@ -92,6 +92,9 @@ fn start_solo(base: &std::path::Path, socket: &str, path: &str) -> Solo {
     cmd.env("TERM", "xterm-256color");
     cmd.env("HOME", std::env::var("HOME").unwrap_or_default());
     cmd.env("PATH", path);
+    // This test is about the dashboard, on a machine that may have no agent program (CI): the
+    // setup offer of a plain `flight` is tested in setup_cli.rs.
+    cmd.env("FLIGHT_NO_SETUP", "1");
     let child = pair.slave.spawn_command(cmd).expect("flight");
     drop(pair.slave);
     let mut reader = pair.master.try_clone_reader().expect("reader");
