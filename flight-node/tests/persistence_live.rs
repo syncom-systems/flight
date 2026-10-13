@@ -67,6 +67,17 @@ impl Live {
         let claude = root.join("bin").join("claude");
         std::fs::write(&claude, fake_claude(&root)).ok()?;
         std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).ok()?;
+        // A `codex` that, like the real one in a terminal, stays up; every start is logged.
+        let codex = root.join("bin").join("codex");
+        std::fs::write(
+            &codex,
+            format!(
+                "#!/bin/sh\necho \"$@\" >> {}/codex.log\nexec sleep 3600\n",
+                root.display()
+            ),
+        )
+        .ok()?;
+        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755)).ok()?;
         let servers = Self::node(&endpoint, &root);
         Some(Self {
             tmux: Tmux::new(endpoint.clone()),
@@ -114,11 +125,15 @@ impl Live {
     }
 
     fn workspace(&self, name: &str, dir: &str) {
+        self.workspace_running(name, dir, Program::Claude);
+    }
+
+    fn workspace_running(&self, name: &str, dir: &str, program: Program) {
         self.servers
             .create_session(&SessionRequest {
                 name: name.to_owned(),
                 dir: dir.to_owned(),
-                program: Program::Claude,
+                program,
             })
             .unwrap();
     }
@@ -895,6 +910,15 @@ mod resume {
             .collect()
     }
 
+    /// Every start of the fake `codex`, as its arguments.
+    fn codex_starts(live: &Live) -> Vec<String> {
+        std::fs::read_to_string(live.root.join("codex.log"))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+
     fn state(live: &Live) -> PathBuf {
         live.root.join("state")
     }
@@ -1195,7 +1219,8 @@ mod resume {
     }
 
     #[test]
-    fn an_agent_of_a_provider_without_a_mechanism_is_reported_unsupported_and_never_resumed() {
+    fn an_agent_of_a_provider_without_a_mechanism_is_reported_unsupported_and_restarts_as_a_new_conversation(
+    ) {
         use flight_proto::SavedResumeCode as R;
         use flight_workspaces::{
             ConfigKey, Document, Origin, RootSpec, Store, SurfaceSpec, WorkspaceDefinition,
@@ -1232,9 +1257,183 @@ mod resume {
             "{}",
             r[0].resume_detail
         );
-        // Starting it is refused with a reason about the provider; nothing resumes it.
-        let e = act(&live, key.as_str(), SavedAction::Restore).unwrap_err();
-        assert!(e.message.contains("no agent provider"), "{}", e.message);
+        // Codex is a provider the node can start, so restoring starts it: as a new conversation,
+        // never as a continuation (nothing in the command line asks for one).
+        act(&live, key.as_str(), SavedAction::Restore).unwrap();
+        let starts = codex_starts(&live);
+        assert_eq!(starts, vec![String::new()], "one plain start: {starts:?}");
+        assert_eq!(live.sessions(), vec!["cx"]);
+    }
+}
+
+/// Codex as a workspace agent (ADR-013): the equivalence suite for what a provider without a
+/// session mechanism can promise. Same scenarios as Claude's, with the honest difference that a
+/// lost workspace is restored as a new conversation and says so.
+mod codex_provider {
+    use super::*;
+    use flight_node::{SavedAction, SavedActionRequest};
+    use flight_proto::{ErrorKindCode, SavedResumeCode};
+    use flight_workspaces::{Action, Outcome, ResumeStore};
+
+    fn codex_log(live: &Live) -> Vec<String> {
+        std::fs::read_to_string(live.root.join("codex.log"))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+
+    fn claude_started(live: &Live) -> bool {
+        live.root.join("claude.log").exists()
+    }
+
+    #[test]
+    fn a_codex_workspace_starts_codex_in_its_directory_and_is_saved_as_codex() {
+        let Some(live) = Live::start("cx-new") else {
+            return;
+        };
+        let dir = live.dir("cx");
+        live.workspace_running("cx", &dir, Program::Codex);
+        assert_eq!(codex_log(&live), vec![String::new()], "one plain start");
+        assert!(!claude_started(&live), "claude was not involved");
+        let w = first_workspace(&live);
+        let agent = w.surfaces.iter().find(|s| s.provider.is_some()).unwrap();
+        assert_eq!(agent.provider.as_deref(), Some("codex"));
+        assert!(!agent.skip_permissions);
+        // No identity was chosen, so there is no reference to keep.
+        let refs = ResumeStore::open(live.root.join("state")).unwrap();
+        assert!(refs.get(&w.key, &agent.key).is_none());
+        assert_eq!(live.sessions(), vec!["cx"]);
+    }
+
+    #[test]
+    fn the_no_approvals_choice_is_explicit_saved_and_never_started_unprompted() {
+        let Some(mut live) = Live::start("cx-skip") else {
+            return;
+        };
+        let dir = live.dir("cx");
+        live.workspace_running("cx", &dir, Program::CodexSkipPermissions);
+        assert_eq!(
+            codex_log(&live),
+            vec!["--dangerously-bypass-approvals-and-sandbox".to_owned()]
+        );
+        let w = first_workspace(&live);
+        assert!(w.surfaces.iter().any(|s| s.skip_permissions));
+        // Recovery does not start such an agent on its own (the rule Claude has).
+        live.lose_tmux();
+        live.restart_node();
+        let report = live.recover(&go());
+        assert!(
+            !report
+                .done
+                .iter()
+                .any(|(_, a, o)| matches!(a, Action::StartWorkspace { .. })
+                    && *o == Outcome::Started),
+            "{:?}",
+            report.done
+        );
+        assert_eq!(codex_log(&live).len(), 1, "nothing was started unprompted");
+    }
+
+    #[test]
+    fn codex_that_is_not_installed_is_refused_with_the_fix_and_nothing_is_created() {
+        let Some(live) = Live::start("cx-missing") else {
+            return;
+        };
+        std::fs::remove_file(live.root.join("bin").join("codex")).unwrap();
+        let dir = live.dir("cx");
+        let e = live
+            .servers
+            .create_session(&SessionRequest {
+                name: "cx".to_owned(),
+                dir,
+                program: Program::Codex,
+            })
+            .unwrap_err();
+        assert_eq!(e.kind, ErrorKindCode::ProgramUnavailable);
+        assert!(e.message.contains("codex was not found"), "{}", e.message);
+        assert!(e.message.contains("service's PATH"), "{}", e.message);
         assert!(live.sessions().is_empty());
+        assert!(live.saved().active().unwrap().workspaces.is_empty());
+    }
+
+    #[test]
+    fn a_companion_shell_joins_a_codex_workspace_like_any_other() {
+        let Some(live) = Live::start("cx-shell") else {
+            return;
+        };
+        let dir = live.dir("cx");
+        live.workspace_running("cx", &dir, Program::Codex);
+        let id = first_workspace(&live).last_workspace_id.clone().unwrap();
+        live.servers
+            .create_surface(&SurfaceRequest {
+                host: HostId::new(HOST),
+                workspace_id: WorkspaceId::new(&id),
+                kind: NewSurface::Shell,
+                another: false,
+            })
+            .unwrap();
+        let w = first_workspace(&live);
+        assert_eq!(w.surfaces.len(), 2);
+        assert_eq!(
+            w.surfaces
+                .iter()
+                .filter_map(|s| s.provider.as_deref())
+                .collect::<Vec<_>>(),
+            vec!["codex"]
+        );
+        assert_eq!(live.windows(), 2);
+    }
+
+    #[test]
+    fn a_lost_codex_workspace_says_it_cannot_continue_and_restore_starts_a_new_conversation() {
+        let Some(mut live) = Live::start("cx-lost") else {
+            return;
+        };
+        let dir = live.dir("cx");
+        live.workspace_running("cx", &dir, Program::Codex);
+        live.lose_tmux();
+        live.restart_node();
+        let report = live.servers.saved_report();
+        assert_eq!(report[0].resume, SavedResumeCode::Unsupported as i32);
+        assert!(
+            report[0].resume_detail.contains("Codex"),
+            "{}",
+            report[0].resume_detail
+        );
+        let key = first_workspace(&live).key.to_string();
+        live.servers
+            .saved_action(&SavedActionRequest {
+                config_key: key,
+                action: SavedAction::Restore,
+            })
+            .unwrap();
+        assert_eq!(
+            codex_log(&live),
+            vec![String::new(), String::new()],
+            "a plain start again, never a resume"
+        );
+        assert_eq!(live.sessions(), vec!["cx"]);
+    }
+
+    #[test]
+    fn the_recovery_report_says_started_not_resumed() {
+        let Some(mut live) = Live::start("cx-report") else {
+            return;
+        };
+        let dir = live.dir("cx");
+        live.workspace_running("cx", &dir, Program::Codex);
+        live.lose_tmux();
+        live.restart_node();
+        let report = live.recover(&go());
+        assert!(
+            matches!(
+                report.done.first(),
+                Some((_, Action::StartWorkspace { .. }, Outcome::Started))
+            ),
+            "{:?}",
+            report.done
+        );
+        assert!(!report.done.iter().any(|(_, _, o)| *o == Outcome::Resumed));
     }
 }

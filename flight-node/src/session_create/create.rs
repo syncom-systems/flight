@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::{new_id, Program, SessionEnv, SessionRequest};
-use crate::agent_resume::{AgentLaunch, AgentSession, Claude};
+use crate::agent_resume::{AgentLaunch, AgentSession};
 use crate::ControlError;
 use flight_proto::{valid_dir, valid_session_name, ErrorKindCode};
 use flight_tmux::{
@@ -9,8 +9,6 @@ use flight_tmux::{
 };
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-
-const CLAUDE: &str = "claude";
 
 fn refuse(kind: ErrorKindCode, message: impl Into<String>) -> ControlError {
     ControlError::new(kind, message)
@@ -38,29 +36,34 @@ pub(crate) fn create<R: TmuxRunner>(
         return Err(refuse(ErrorKindCode::InvalidRequest, "invalid directory"));
     }
     let dir = existing_dir(&request.dir, env)?;
-    let (launch, session) = match request.program {
-        Program::Shell => (Launch::DefaultShell, None),
-        Program::Claude | Program::ClaudeSkipPermissions => {
+    let (launch, session) = match request.program.agent() {
+        None => (Launch::DefaultShell, None),
+        Some((provider, skip)) => {
             // Found on the node's PATH, then run by absolute path. tmux gives the session the
             // PATH of its client, which is this process: the node's environment, not
             // whatever the tmux server was started with.
-            let claude = find_program(CLAUDE, env)?;
-            let skip = request.program == Program::ClaudeSkipPermissions;
+            let exe = find_program(provider.program(), env)?;
             let (argv, session) = match agent {
-                AgentLaunch::New => {
-                    let session = Claude::new_session().map_err(|_| {
+                AgentLaunch::New => provider.new_launch(exe, skip).map_err(|_| {
+                    refuse(
+                        ErrorKindCode::RemoteCommandFailed,
+                        "this node cannot make a new id",
+                    )
+                })?,
+                AgentLaunch::Resume(session) => (
+                    provider.resume_launch(exe, session, skip).ok_or_else(|| {
                         refuse(
-                            ErrorKindCode::RemoteCommandFailed,
-                            "this node cannot make a new id",
+                            ErrorKindCode::InvalidRequest,
+                            format!(
+                                "{} cannot continue an earlier conversation",
+                                provider.program()
+                            ),
                         )
-                    })?;
-                    (Claude::new_argv(claude, &session, skip), session)
-                }
-                AgentLaunch::Resume(session) => {
-                    (Claude::resume_argv(claude, session, skip), session.clone())
-                }
+                    })?,
+                    Some(session.clone()),
+                ),
             };
-            (Launch::Program { argv }, Some(session))
+            (Launch::Program { argv }, session)
         }
     };
     // The new session is a workspace: it gets an identity of its own, kept in the backend, and
@@ -68,9 +71,9 @@ pub(crate) fn create<R: TmuxRunner>(
     let mark = SurfaceMark {
         workspace_id: new_id('w')?,
         surface_id: new_id('s')?,
-        kind: match request.program {
-            Program::Shell => SurfaceTag::Shell,
-            Program::Claude | Program::ClaudeSkipPermissions => SurfaceTag::Agent,
+        kind: match request.program.agent() {
+            None => SurfaceTag::Shell,
+            Some(_) => SurfaceTag::Agent,
         },
         config,
     };
@@ -89,8 +92,11 @@ pub(crate) fn create<R: TmuxRunner>(
         )),
         Err(CreateError::Exited) if resuming => Err(refuse(
             ErrorKindCode::ProgramUnavailable,
-            "claude could not continue the earlier session (it exited as soon as it started); \
-             nothing was started and the saved workspace was kept",
+            format!(
+                "{} could not continue the earlier session (it exited as soon as it started); \
+                 nothing was started and the saved workspace was kept",
+                program_name(request.program)
+            ),
         )),
         Err(CreateError::Exited) => Err(refuse(
             ErrorKindCode::ProgramUnavailable,
@@ -105,10 +111,9 @@ pub(crate) fn create<R: TmuxRunner>(
 }
 
 fn program_name(program: Program) -> &'static str {
-    match program {
-        Program::Claude | Program::ClaudeSkipPermissions => CLAUDE,
-        Program::Shell => "the shell",
-    }
+    program
+        .agent()
+        .map_or("the shell", |(provider, _)| provider.program())
 }
 
 /// The directory on this node, `~` expanded, only if it exists and is a directory. Nothing is

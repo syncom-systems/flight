@@ -503,6 +503,28 @@ fn a_create_session_names_its_host_and_validates() {
 }
 
 #[test]
+fn codex_programs_validate_are_numbered_for_good_and_an_unknown_program_is_refused() {
+    for p in [ProgramCode::Codex, ProgramCode::CodexSkipPermissions] {
+        assert_eq!(create(|c| c.program = p as i32).validate(), Ok(()));
+    }
+    // The numbers are the contract: never renumbered, only added.
+    assert_eq!(ProgramCode::Codex as i32, 4);
+    assert_eq!(ProgramCode::CodexSkipPermissions as i32, 5);
+    assert!(create(|c| c.program = 6).validate().is_err());
+    assert!(create(|c| c.program = 0).validate().is_err());
+}
+
+#[test]
+fn the_codex_capability_is_known_and_negotiated_away_by_a_peer_without_it() {
+    assert!(capability::KNOWN.contains(&"agent_codex_v1"));
+    let offered = vec!["agent_codex_v1".to_owned(), "create_session_v1".to_owned()];
+    assert_eq!(
+        capability::negotiate(&offered, &["create_session_v1"]),
+        vec!["create_session_v1".to_owned()]
+    );
+}
+
+#[test]
 fn a_malformed_or_oversized_create_session_is_refused() {
     type Mutation = Box<dyn FnOnce(&mut command_kind::CreateSession)>;
     let cases: Vec<(&str, Mutation)> = vec![
