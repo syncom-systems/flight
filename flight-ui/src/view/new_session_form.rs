@@ -24,6 +24,8 @@ pub struct NewSessionForm {
     name: String,
     dir: String,
     program: Program,
+    /// What the Agent row offers, in order; the first is selected to begin with.
+    agents: Vec<Program>,
     focus: Field,
     error: Option<String>,
     submitting: bool,
@@ -42,10 +44,40 @@ impl NewSessionForm {
             name: String::new(),
             dir: "~".to_owned(),
             program: Program::Claude,
+            agents: Program::ALL.to_vec(),
             focus: Field::Name,
             error: None,
             submitting: false,
         }
+    }
+
+    /// The same form offering `agents` (the first one selected) instead of the default.
+    pub fn with_agents(mut self, agents: Vec<Program>) -> Self {
+        if let Some(first) = agents.first() {
+            self.program = *first;
+            self.agents = agents;
+        }
+        self
+    }
+
+    pub fn agents(&self) -> &[Program] {
+        &self.agents
+    }
+
+    /// The next (or previous) choice of the Agent row, wrapping.
+    fn cycle(&self, forward: bool) -> Program {
+        let n = self.agents.len();
+        let at = self
+            .agents
+            .iter()
+            .position(|p| *p == self.program)
+            .unwrap_or(0);
+        let to = if forward {
+            at.saturating_add(1) % n.max(1)
+        } else {
+            at.checked_sub(1).unwrap_or(n.saturating_sub(1))
+        };
+        self.agents.get(to).copied().unwrap_or(self.program)
     }
 
     pub fn hosts(&self) -> &[HostChoice] {
@@ -207,11 +239,7 @@ impl NewSessionForm {
                 self.error = None;
             }
             Field::Start => {
-                self.program = if forward {
-                    self.program.next()
-                } else {
-                    self.program.prev()
-                };
+                self.program = self.cycle(forward);
                 self.error = None;
             }
             Field::Create | Field::Cancel => {
@@ -227,7 +255,7 @@ impl NewSessionForm {
 
     fn type_char(&mut self, c: char) {
         match self.focus {
-            Field::Start if c == ' ' => self.program = self.program.next(),
+            Field::Start if c == ' ' => self.program = self.cycle(true),
             Field::Host if c == ' ' => self.change(true),
             _ => {
                 let limit = if self.focus == Field::Name {

@@ -22,7 +22,7 @@ These are three different things.
 
 1. **The session survives** (nothing needs doing). Closing the dashboard or terminal, restarting or killing the node or the orchestrator, losing the network: the agent and shells keep running in the private tmux. When the dashboard or the node comes back, everything is where you left it, including what is on the screen.
 2. **A saved workspace is restored** (you press Enter). If the private tmux server is lost (the machine restarted, or someone ran `tmux -L flight kill-server`), the processes are gone, but Flight remembered each workspace: its machine, folder, agent and shells. It shows as **saved**. Press Enter and it starts again in the same folder, never a different one. The shells are new; what was running in them is not recovered.
-3. **The conversation is resumed** (Flight asks Claude to). When a saved Claude workspace is restored, Flight starts Claude with the conversation it remembered (`claude --resume`). If Claude still has it, the earlier conversation continues. If not, Flight says so and offers a new conversation; it never pretends.
+3. **The conversation is resumed** (Flight asks the agent to, when the agent allows it). Claude does; Codex does not (it chooses its own conversation ids and does not report them, so Flight cannot tell which one is yours): a saved Codex workspace is restored as a **new** Codex conversation, and the dashboard says so before you press Enter. When a saved Claude workspace is restored, Flight starts Claude with the conversation it remembered (`claude --resume`). If Claude still has it, the earlier conversation continues. If not, Flight says so and offers a new conversation; it never pretends.
 
 ## Where Flight keeps things
 

@@ -5,7 +5,7 @@ use crate::{Effects, Liveness, OrchestratorCore, UiId};
 use flight_proto::{
     capability,
     command_kind::{CreateSurface, Kind, RemoveSurface, RenameSurface},
-    orchestrator_body, ErrorKindCode, OrchestratorFrame, Request,
+    orchestrator_body, ErrorKindCode, OrchestratorFrame, ProgramCode, Request,
 };
 use flight_state::HostId;
 
@@ -16,6 +16,14 @@ fn required_capability(kind: &Kind) -> &'static str {
         Kind::OpenTerminal(_) => capability::TERMINAL,
         Kind::SendInput(_) => capability::SEND_INPUT,
         Kind::KillPane(_) => capability::KILL,
+        // Codex is a program only a node that advertises it may be sent: one that does not would
+        // refuse the code, and the person is told which node cannot, not that "something failed".
+        Kind::CreateSession(c)
+            if c.program == ProgramCode::Codex as i32
+                || c.program == ProgramCode::CodexSkipPermissions as i32 =>
+        {
+            capability::AGENT_CODEX
+        }
         Kind::CreateSession(_) => capability::CREATE_SESSION,
         // Another surface beside those that exist must reach a node that knows the difference
         // from the one-shell rule: one that does not would answer as if the first were asked.

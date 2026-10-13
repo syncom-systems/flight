@@ -58,7 +58,9 @@ fn choose_agents(console: &mut dyn Console, reuse: Option<&Settings>) -> Vec<Age
     console.say("");
     console.say("Which agents do you work with?");
     console.say("  1) Claude Code");
-    console.say("  2) Codex (preview: starts and persists; conversations are not continued after a restart)");
+    console.say(
+        "  2) Codex (a restart starts a new conversation; Codex cannot be asked to continue one)",
+    );
     console.say("  3) Both");
     console.say("  4) Neither (shells only)");
     match console.line("Choose 1-4 [1]:").as_deref().map(str::trim) {

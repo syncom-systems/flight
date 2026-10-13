@@ -417,6 +417,8 @@ impl Backend for OrchestratedBackend {
             program: match request.program {
                 Program::Claude => ProgramCode::Claude,
                 Program::ClaudeSkipPermissions => ProgramCode::ClaudeSkipPermissions,
+                Program::Codex => ProgramCode::Codex,
+                Program::CodexSkipPermissions => ProgramCode::CodexSkipPermissions,
                 Program::Shell => ProgramCode::Shell,
             } as i32,
         });

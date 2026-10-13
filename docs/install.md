@@ -43,7 +43,7 @@ To see what is missing and the commands, without being asked anything and withou
 
 The first run sets everything up in about a second and shows the dashboard. See the [README](../README.md) for the keys. On macOS, first turn off the system's use of `Ctrl-Space` ([troubleshooting](troubleshooting.md)).
 
-You also need the agent program you want to use, for Claude the `claude` command, installed and logged in on each machine where workspaces run.
+You also need the agent program you want to use, for Claude the `claude` command and for Codex the `codex` command, installed and logged in on each machine where workspaces run. `flight setup` records which you use; the new-workspace form then offers them in that order. Claude is supported on macOS and Linux; Codex is supported with one difference: after a restart it starts a new conversation. It has been verified with a real Codex CLI (0.148.0) on macOS on Apple silicon only.
 
 ## More machines, services
 

@@ -13,15 +13,17 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use support::*;
 
-/// A `claude` that only waits, first on the node's `PATH`: the form offers an agent, and the
+/// Agent programs that only wait, first on the node's `PATH`: the form offers an agent, and the
 /// test needs one that can run anywhere.
-fn path_with_fake_claude(base: &std::path::Path) -> String {
+fn path_with_fakes(base: &std::path::Path, programs: &[&str]) -> String {
     use std::os::unix::fs::PermissionsExt;
     let bin = base.join("bin");
     std::fs::create_dir_all(&bin).expect("bin");
-    let claude = bin.join("claude");
-    std::fs::write(&claude, "#!/bin/sh\nexec sleep 3600\n").expect("fake claude");
-    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    for program in programs {
+        let fake = bin.join(program);
+        std::fs::write(&fake, "#!/bin/sh\nexec sleep 3600\n").expect("fake agent");
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    }
     format!(
         "{}:{}",
         bin.display(),
@@ -37,9 +39,44 @@ fn wait(what: &str, mut check: impl FnMut() -> bool) {
     }
 }
 
+/// One run of the form against a real dashboard: what the person chose in setup, which agent
+/// programs exist on the node, and what the new workspace must be running afterwards.
+struct Case {
+    tag: &'static str,
+    /// The dashboard's `settings.toml`, if the person ran setup.
+    settings: Option<&'static str>,
+    programs: &'static [&'static str],
+    /// Part of the command line tmux was told to run for the agent.
+    runs: &'static str,
+}
+
 #[test]
 fn n_opens_the_form_and_a_filled_form_creates_a_session_that_appears_selected() {
-    let base = PathBuf::from(format!("/tmp/fl-ct-{}", std::process::id()));
+    creation(&Case {
+        tag: "claude",
+        settings: None,
+        programs: &["claude"],
+        runs: "/claude --session-id ",
+    });
+}
+
+/// The same journey for Codex (ADR-013, scenario 1 of the equivalence suite), through the real
+/// dashboard: the person chose Codex in setup, so the form offers it first, and what runs is
+/// `codex`, not `claude`.
+#[test]
+fn a_person_who_chose_codex_in_setup_creates_a_codex_workspace_the_same_way() {
+    creation(&Case {
+        tag: "codex",
+        settings: Some(
+            "version = 1\n[agents]\nenabled = [\"codex\"]\ndefault = \"codex\"\n[setup]\ncompleted = true\ndeclined = false\n",
+        ),
+        programs: &["codex"],
+        runs: "/codex",
+    });
+}
+
+fn creation(case: &Case) {
+    let base = PathBuf::from(format!("/tmp/fl-ct-{}-{}", std::process::id(), case.tag));
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).expect("base dir");
     let _cleanup = TempDir(base.clone());
@@ -61,13 +98,16 @@ fn n_opens_the_form_and_a_filled_form_creates_a_session_that_appears_selected() 
             .expect("join");
         assert!(out.status.success());
     }
-    let socket = format!("fl-ct-{}", std::process::id());
+    if let Some(settings) = case.settings {
+        std::fs::write(ui_cfg.join("settings.toml"), settings).expect("settings");
+    }
+    let socket = format!("fl-ct-{}-{}", std::process::id(), case.tag);
     let _file = NamedSocketFile(socket.clone());
     let sock = Sock::Named(socket.clone());
     let _node = Proc(
         flight()
             .args(["node", "run", "--interval", "1", "--socket", &socket])
-            .env("PATH", path_with_fake_claude(&base))
+            .env("PATH", path_with_fakes(&base, case.programs))
             .arg("--config-dir")
             .arg(&node_cfg)
             .stdout(Stdio::null())
@@ -172,6 +212,18 @@ fn n_opens_the_form_and_a_filled_form_creates_a_session_that_appears_selected() 
         PathBuf::from(cwd.trim()).canonicalize().unwrap_or_default(),
         work
     );
+    let started = tmux(
+        &sock,
+        &[
+            "display-message",
+            "-p",
+            "-t",
+            "=quick:",
+            "#{pane_start_command}",
+        ],
+    )
+    .unwrap_or_default();
+    assert!(started.contains(case.runs), "started: {started}");
     wait(
         "the dashboard to confirm, close the form and select the new session",
         || {

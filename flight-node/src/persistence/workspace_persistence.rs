@@ -5,7 +5,7 @@ use crate::persistence::saved_report::{capped, saved_workspace, ResumeStatus};
 use crate::persistence::NodeBackend;
 use crate::persistence::NodeTmux;
 use crate::persistence::{canonical_root, NewReference, ResumeContext};
-use crate::{ControlError, Program, SavedAction, SavedActionRequest, SessionRequest};
+use crate::{ControlError, SavedAction, SavedActionRequest, SessionRequest};
 use flight_proto::ErrorKindCode;
 use flight_proto::SavedResumeCode;
 use flight_tmux::{ConfigMark, SurfaceMark, SurfaceTag};
@@ -131,8 +131,12 @@ impl WorkspacePersistence {
                 SurfaceTag::Agent => SurfaceKind::Agent,
                 SurfaceTag::Shell => SurfaceKind::Shell,
             },
-            provider: (mark.kind == SurfaceTag::Agent).then(|| "claude".to_owned()),
-            skip_permissions: request.program == Program::ClaudeSkipPermissions,
+            provider: request
+                .program
+                .agent()
+                .filter(|_| mark.kind == SurfaceTag::Agent)
+                .map(|(provider, _)| provider.id().to_owned()),
+            skip_permissions: request.program.agent().is_some_and(|(_, skip)| skip),
             last_surface_id: Some(mark.surface_id.clone()),
             name: None,
         };

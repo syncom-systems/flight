@@ -89,6 +89,9 @@ pub struct Start {
     pub resume: Option<(WorkspaceKey, SurfaceChoice)>,
     /// The workspace to put the cursor on.
     pub select: Option<WorkspaceKey>,
+    /// What the new-workspace form offers as the agent, in order (the person's choice in setup);
+    /// empty leaves the default.
+    pub agents: Vec<crate::Program>,
 }
 
 /// [`run`], beginning as `start` says.
@@ -114,6 +117,7 @@ fn event_loop(
     start: Start,
 ) -> io::Result<Exit> {
     let mut vm = ViewModel::new();
+    vm.set_agents(start.agents);
     vm.set_message(start.notice);
     if let Some(key) = start.select {
         vm.point_at(key);

@@ -5,7 +5,7 @@ use super::opening::Opening;
 use super::SavedPrompt;
 use super::{
     Action, Effect, FilterInput, FormOutcome, HostChoice, InputMode, NamePrompt, NewSessionForm,
-    NewSessionRequest, ShellPrompt,
+    NewSessionRequest, Program, ShellPrompt,
 };
 use crate::collect::CreateFailure;
 use crate::snapshot::HostHealth;
@@ -18,6 +18,8 @@ use flight_state::{HostId, PaneRef, SurfaceId};
 #[derive(Debug, Clone)]
 pub struct ViewModel {
     pub(super) snapshot: UiSnapshot,
+    /// What the new-workspace form offers as the agent (the person's choice in setup).
+    pub(super) agents: Vec<Program>,
     pub(super) selected: Option<WorkspaceKey>,
     /// Index the selection had in the list, to pick a neighbour if it vanishes.
     pub(super) hint: usize,
@@ -73,6 +75,7 @@ impl ViewModel {
     pub fn new() -> Self {
         Self {
             snapshot: UiSnapshot::default(),
+            agents: Program::ALL.to_vec(),
             selected: None,
             hint: 0,
             surface: None,
@@ -90,6 +93,14 @@ impl ViewModel {
             searching: false,
             help: false,
             tick: 0,
+        }
+    }
+
+    /// The agents the new-workspace form offers, in order (the first is selected). An empty list
+    /// leaves what is offered unchanged.
+    pub fn set_agents(&mut self, agents: Vec<Program>) {
+        if !agents.is_empty() {
+            self.agents = agents;
         }
     }
 
@@ -290,7 +301,10 @@ impl ViewModel {
 
     fn open_form(&mut self) {
         let prefer = self.selected.as_ref().map(|k| k.host.clone());
-        self.form = Some(NewSessionForm::new(self.connected_hosts(), prefer.as_ref()));
+        self.form = Some(
+            NewSessionForm::new(self.connected_hosts(), prefer.as_ref())
+                .with_agents(self.agents.clone()),
+        );
     }
 
     /// The nodes a session can be created on: those the orchestrator has a live link to.

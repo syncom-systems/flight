@@ -12,7 +12,7 @@ The template is `contrib/launchd/name.flight.node.plist`; the steps, and why it 
 
     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/name.flight.node.plist
 
-The template's PATH is `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`: it must contain `tmux` and the agent program (`claude`). If `claude` lives elsewhere (for example `~/.local/bin`), add that directory to the `PATH` in the plist, or a workspace will say `claude was not found on this node's PATH`.
+The template's PATH is `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`: it must contain `tmux` and the agent programs you use (`claude`, `codex`). If one lives elsewhere (for example `~/.local/bin`), add that directory to the `PATH` in the plist, or a workspace will say `claude was not found on this node's PATH` (or `codex`).
 
 Check and remove:
 
@@ -29,6 +29,6 @@ Check and remove:
     systemctl --user status flight-node
     journalctl --user -u flight-node -f
 
-The unit sets `PATH` to `~/.local/bin:/usr/local/bin:/usr/bin:/bin`: `tmux` and `claude` must be found there, or add their directory to `Environment=PATH=` in the unit. For the orchestrator use `contrib/systemd/flight-orchestrator.service` after editing `--advertise`. The units set `KillMode=process`, so that stopping or restarting the service does not kill the tmux server and your sessions with it.
+The unit sets `PATH` to `~/.local/bin:/usr/local/bin:/usr/bin:/bin`: `tmux` and the agent programs (`claude`, `codex`) must be found there, or add their directory to `Environment=PATH=` in the unit. For the orchestrator use `contrib/systemd/flight-orchestrator.service` after editing `--advertise`. The units set `KillMode=process`, so that stopping or restarting the service does not kill the tmux server and your sessions with it.
 
 (Homebrew installs the templates under `$(brew --prefix)/share/flight/contrib`.)
