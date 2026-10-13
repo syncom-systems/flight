@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use crate::agent_provider::Provider;
 use crate::agent_resume::{AgentLaunch, AgentSession, Claude};
 use crate::pane_agent;
 use crate::persistence::NodeTmux;
@@ -158,13 +159,14 @@ impl<S: NodeTmux + ?Sized> NodeBackend<'_, S> {
             first.skip_permissions,
         ) {
             (SurfaceKind::Shell, ..) => Program::Shell,
-            (SurfaceKind::Agent, Some("claude"), false) => Program::Claude,
-            (SurfaceKind::Agent, Some("claude"), true) => Program::ClaudeSkipPermissions,
-            (SurfaceKind::Agent, other, _) => {
-                return Err(ExecError::Refused(format!(
-                    "no agent provider {other:?} on this node"
-                )))
-            }
+            (SurfaceKind::Agent, provider, skip) => match provider.and_then(Provider::from_id) {
+                Some(provider) => Program::of_agent(provider, skip),
+                None => {
+                    return Err(ExecError::Refused(format!(
+                        "no agent provider {provider:?} on this node"
+                    )))
+                }
+            },
         };
         let request = SessionRequest {
             name: def.name.clone(),

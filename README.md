@@ -38,7 +38,7 @@ When you want to leave, press `Ctrl-Space`, let go, then `q` to return to the da
 | `?` | Help |
 | `q` | Quit (nothing stops) |
 
-A **workspace** is one project on one machine: an agent (Claude) and, if you want, any number of shells in the same folder.
+A **workspace** is one project on one machine: an agent (Claude, or Codex if you chose it in `flight setup`) and, if you want, any number of shells in the same folder.
 
 ## When things happen
 

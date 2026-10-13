@@ -467,3 +467,66 @@ fn the_form_fits_a_small_terminal() {
     let text = render_to_string(&vm, 60, 16);
     assert!(text.contains("Create"), "{text}");
 }
+
+fn open_offering(agents: Vec<Program>) -> ViewModel {
+    let mut vm = ViewModel::new();
+    vm.set_agents(agents);
+    vm.apply_snapshot(fleet());
+    assert_eq!(vm.apply(Action::NewSession), Effect::None);
+    vm
+}
+
+fn focus_agent_row(vm: &mut ViewModel) {
+    while focus(vm) != Field::Start {
+        input(vm, FormInput::Next);
+    }
+}
+
+#[test]
+fn the_agents_a_person_chose_in_setup_are_offered_in_their_order_with_the_first_selected() {
+    let mut vm = open_offering(Program::choices(&["codex", "claude"]));
+    let text = render_to_string(&vm, 100, 30);
+    assert!(text.contains("‹ Codex ›"), "{text}");
+    assert!(text.contains("1/4"), "{text}");
+    focus_agent_row(&mut vm);
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        seen.push(vm.form().unwrap().program());
+        input(&mut vm, FormInput::Right);
+    }
+    assert_eq!(
+        seen,
+        vec![
+            Program::Codex,
+            Program::CodexSkipPermissions,
+            Program::Claude,
+            Program::ClaudeSkipPermissions
+        ]
+    );
+    assert_eq!(vm.form().unwrap().program(), Program::Codex, "it wraps");
+}
+
+#[test]
+fn codex_is_created_as_codex_and_the_no_approvals_choice_is_never_the_default() {
+    let mut vm = open_offering(Program::choices(&["codex"]));
+    assert_eq!(vm.form().unwrap().program(), Program::Codex);
+    let effect = submit(&mut vm, "api", "/srv/work");
+    let Effect::Create(req) = effect else {
+        panic!("{effect:?} / {:?}", error(&vm));
+    };
+    assert_eq!(req.program, Program::Codex);
+    let mut vm = open_offering(Program::choices(&["codex"]));
+    focus_agent_row(&mut vm);
+    input(&mut vm, FormInput::Right);
+    let text = render_to_string(&vm, 100, 30);
+    assert!(text.contains("no approval prompts"), "{text}");
+}
+
+#[test]
+fn with_no_choice_made_the_form_is_exactly_what_1_0_showed() {
+    let vm = open();
+    let text = render_to_string(&vm, 100, 30);
+    assert!(text.contains("(•) Claude"), "{text}");
+    assert!(text.contains("( ) Claude, no permission prompts"), "{text}");
+    assert!(!text.contains("Codex"), "{text}");
+}

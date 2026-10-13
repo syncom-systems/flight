@@ -65,7 +65,17 @@ fn dashboard(args: &[String]) -> Result<(), String> {
     // A surface is shown in a terminal session over Flight; when it ends the dashboard comes
     // back, with the reason on its status line. The link to the orchestrator is the same one
     // throughout: showing a surface and coming back rebuilds nothing.
-    let mut begin = Start::default();
+    // What the new-workspace form offers is what the person chose in setup (Claude by default).
+    let agents = flight_ui::Program::choices(
+        &crate::setup::chosen_agents(&base)
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+    );
+    let mut begin = Start {
+        agents: agents.clone(),
+        ..Start::default()
+    };
     loop {
         let backend = handle(&link);
         let handoff = backend.handoff();
@@ -95,6 +105,7 @@ fn dashboard(args: &[String]) -> Result<(), String> {
                 begin = Start {
                     notice: Some(back.notice),
                     select: Some(back.select),
+                    agents: agents.clone(),
                     ..Start::default()
                 };
             }

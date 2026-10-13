@@ -97,6 +97,11 @@ enum ProgramCode {
   PROGRAM_CODE_SHELL = 2;
   // `claude` started so that it does not ask before acting (`--dangerously-skip-permissions`).
   PROGRAM_CODE_CLAUDE_SKIP_PERMISSIONS = 3;
+  // The `codex` found on the node's own PATH (agent_codex_v1). A node that does not know the
+  // code refuses the request; it never starts something else in its place.
+  PROGRAM_CODE_CODEX = 4;
+  // `codex` started with its flag that never asks before acting and does not sandbox.
+  PROGRAM_CODE_CODEX_SKIP_PERMISSIONS = 5;
 }
 
 // What a surface of a workspace is. A closed set: a new kind is a new number, and a peer that

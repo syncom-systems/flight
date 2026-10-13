@@ -13,6 +13,7 @@
 //!
 //! [`Snapshot`]: flight_proto::Snapshot
 
+mod agent_provider;
 mod agent_resume;
 mod codes;
 mod control;

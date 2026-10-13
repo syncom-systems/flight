@@ -45,8 +45,13 @@ pub const MULTIPLE_SURFACES: &str = "multiple_surfaces_v1";
 /// labels.
 pub const SURFACE_NAMES: &str = "surface_names_v1";
 
+/// The node starts Codex as an agent (ADR-013): `CreateSession` with `PROGRAM_CODE_CODEX` or
+/// `PROGRAM_CODE_CODEX_SKIP_PERMISSIONS`. A peer without it is never sent either, so Codex is
+/// never asked of a node that would refuse or misread it.
+pub const AGENT_CODEX: &str = "agent_codex_v1";
+
 /// Every capability this build knows about.
-pub const KNOWN: [&str; 12] = [
+pub const KNOWN: [&str; 13] = [
     PREVIEW,
     GUARDED_REVEAL,
     TERMINAL,
@@ -59,6 +64,7 @@ pub const KNOWN: [&str; 12] = [
     AGENT_RESUME,
     MULTIPLE_SURFACES,
     SURFACE_NAMES,
+    AGENT_CODEX,
 ];
 
 /// The offered capabilities that `supported` also contains, in offered order, without

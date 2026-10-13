@@ -134,8 +134,26 @@ fn start_value(form: &NewSessionForm) -> Vec<Span<'static>> {
             },
         )
     };
+    if form.agents().len() > 2 {
+        // More than fits in a row: the selected one, with where it sits among the others.
+        let at = form
+            .agents()
+            .iter()
+            .position(|p| *p == form.program())
+            .map_or(1, |i| i.saturating_add(1));
+        return vec![
+            Span::styled(
+                format!("‹ {} ›", form.program().label()),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("  {at}/{}  (← → to change)", form.agents().len()),
+                dim(),
+            ),
+        ];
+    }
     let mut spans = Vec::new();
-    for p in Program::ALL {
+    for p in form.agents().iter().copied() {
         if !spans.is_empty() {
             spans.push(Span::raw("  "));
         }

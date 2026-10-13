@@ -104,3 +104,15 @@ pub fn offer_before_start(config_dir: &Path, args: &Args) {
 fn interactive() -> bool {
     std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
 }
+
+/// The agents the person works with, as saved by setup (provider ids, in their order of
+/// preference). Nothing saved, or a file that cannot be used, means none (the form then offers
+/// Claude): the file is never touched here.
+pub fn chosen_agents(config_dir: &Path) -> Vec<String> {
+    SettingsStore::in_dir(config_dir)
+        .load()
+        .ok()
+        .flatten()
+        .map(|s| s.agents.enabled)
+        .unwrap_or_default()
+}

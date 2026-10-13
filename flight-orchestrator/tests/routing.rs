@@ -435,6 +435,40 @@ fn a_node_without_the_versioned_capability_is_never_sent_a_create() {
 }
 
 #[test]
+fn codex_is_asked_only_of_a_node_that_advertises_it_and_claude_still_goes_to_any() {
+    // A mixed fleet (ADR-013): node-a predates Codex, node-b offers it. Asking node-a for Codex is
+    // refused at once, naming the problem as unsupported; Claude still goes to it, and Codex goes
+    // to node-b.
+    let mut w = ready();
+    let without: Vec<&str> = flight_proto::capability::KNOWN
+        .iter()
+        .copied()
+        .filter(|c| *c != flight_proto::capability::AGENT_CODEX)
+        .collect();
+    w.connect_offering(1, &without);
+    w.forwarded.clear();
+    send(&mut w, create(30, "node-b", "cx", ProgramCode::Codex));
+    send(
+        &mut w,
+        create(31, "node-b", "cx", ProgramCode::CodexSkipPermissions),
+    );
+    assert_eq!(
+        error_kinds(&w),
+        vec![ErrorKindCode::Unsupported as i32; 2],
+        "{:?}",
+        error_kinds(&w)
+    );
+    assert!(w.forwarded.is_empty(), "nothing reached the older node");
+    send(&mut w, create(32, "node-b", "cl", ProgramCode::Claude));
+    assert_eq!(w.forwarded.len(), 1, "Claude still goes to the older node");
+    // A node that advertises it receives Codex.
+    w.forwarded.clear();
+    send(&mut w, create(33, "node-a", "cx", ProgramCode::Codex));
+    assert_eq!(w.forwarded.len(), 1);
+    assert_eq!(w.forwarded[0].0, "node-a");
+}
+
+#[test]
 fn a_malformed_or_oversized_create_never_reaches_a_node() {
     let mut w = two_nodes();
     let long = "a".repeat(65);
