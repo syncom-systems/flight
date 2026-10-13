@@ -559,7 +559,9 @@ dependencies = [
  "flight-ui",
  "flight-workspaces",
  "portable-pty",
+ "serde",
  "tokio",
+ "toml",
 ]
 
 [[package]]

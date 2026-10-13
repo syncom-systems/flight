@@ -30,7 +30,7 @@ for f in $FILES; do
   grep -E '^    ([AB]\$ )?flight ' "$f" | sed -E 's/^    ([AB]\$ )?//' | while read -r _ group sub rest; do
     case "$group" in
       --version|-V|--once) continue ;;
-      orchestrator|node|ui|workspaces|solo) ;;
+      orchestrator|node|ui|workspaces|solo|setup) ;;
       *) echo "  $f: unknown command 'flight $group'"; echo x >> "${TMPDIR:-/tmp}/docs-check.$$"; continue ;;
     esac
     help=$("$FLIGHT" "$group" --help 2>&1 || true)

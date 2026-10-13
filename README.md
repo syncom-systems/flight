@@ -18,6 +18,8 @@ It works on one machine, or across several machines you own.
 
         flight
 
+   If tmux or an agent program (such as Claude Code) is missing, Flight offers to install it: it shows each command first and runs it only if you say yes. `flight setup` does the same on request, and also asks which agents you work with.
+
 3. Press `n`, choose the folder of a project, press Create. Your agent opens. That is all there is to set up.
 
 When you want to leave, press `Ctrl-Space`, let go, then `q` to return to the dashboard, and `q` again to quit. Everything keeps running. Run `flight` any day later and it is all there.

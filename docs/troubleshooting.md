@@ -10,7 +10,7 @@ macOS uses `Ctrl-Space` to switch input source and the terminal never sees it. T
 
 ## "tmux is needed" or "tmux … is older than the 3.3 Flight needs"
 
-Install or update tmux: `brew install tmux` (`brew upgrade tmux`), or `sudo apt install tmux` on Debian 12 / Ubuntu 24.04. Ubuntu 22.04 and Debian 11 ship a tmux that is too old and are not supported. Check with `tmux -V`.
+Run `flight setup`: it shows the command and runs it only if you say yes (`flight setup --check` only reports). Or install or update tmux yourself: `brew install tmux` (`brew upgrade tmux`), or `sudo apt install tmux` on Debian 12 / Ubuntu 24.04. Ubuntu 22.04 and Debian 11 ship a tmux that is too old and are not supported. Check with `tmux -V`.
 
 ## "claude was not found on this node's PATH"
 
