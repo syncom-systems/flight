@@ -203,10 +203,20 @@ jobs:
           run-id: ${{ inputs.release_run }}
           github-token: ${{ github.token }}
           path: pkg
+      - name: The previous release, for a mixed fleet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          prev=$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName -q '.[0].tagName')
+          echo "previous release: $prev"
+          mkdir prev
+          gh release download "$prev" --pattern '*x86_64-unknown-linux-gnu.tar.gz' --dir prev
+          tar -C prev -xzf prev/flight-*.tar.gz
       - run: |
           set -eu
           tar -C pkg -xzf pkg/flight-*.tar.gz
-          tools/smoke/multinode.sh "$(echo "$PWD"/pkg/flight-*/flight)"
+          tools/smoke/multinode.sh "$(echo "$PWD"/pkg/flight-*/flight)" "$(echo "$PWD"/prev/flight-*/flight)"
 
   launchd-macos:
     name: launchd service (macOS, Apple silicon)

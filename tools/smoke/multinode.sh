@@ -8,10 +8,16 @@
 # Sessions must survive all of it, and the other node must not notice. Needs docker and a
 # Linux x86_64 flight binary; touches nothing outside its own containers and network.
 #
-#   tools/smoke/multinode.sh /path/to/linux/flight
+#   tools/smoke/multinode.sh /path/to/linux/flight [/path/to/previous-release/flight]
+#
+# With a second binary (the previous release), n2 runs that one: a mixed fleet. The current
+# orchestrator and dashboard must still create a workspace on it, and asking it for what it
+# does not know (Codex, ADR-013) must be refused as "too old", never started wrongly.
 set -eu
 
-FLIGHT=$(cd "$(dirname "${1:?usage: multinode.sh /path/to/linux/flight}")" && pwd)/$(basename "$1")
+FLIGHT=$(cd "$(dirname "${1:?usage: multinode.sh /path/to/linux/flight [/path/to/previous/flight]}")" && pwd)/$(basename "$1")
+OLD=""
+[ -z "${2:-}" ] || OLD=$(cd "$(dirname "$2")" && pwd)/$(basename "$2")
 ID=$$
 NET="flmn-$ID"
 IMG="flmn-img-$ID"
@@ -57,18 +63,22 @@ sessions() { dx "$1" sh -c 'tmux -L flight list-sessions 2>/dev/null | grep -vc 
 screen() { dx ui tmux -L out capture-pane -p -t s 2>/dev/null || true; }
 wait_screen() { local i=0; until screen | grep -Eq -- "$1"; do i=$((i + 1)); [ "$i" -le 80 ] || fail "screen never showed: $1"; sleep 0.5; done; }
 start_orch() { dxd orch sh -c 'exec flight orchestrator run --listen 0.0.0.0:7676 --advertise orch:7676 --config-dir /cfg >> /var/log/flight.log 2>&1'; wait_for "the orchestrator" 30 dx orch test -S /cfg/orchestrator/admin.sock; }
-start_node() { dxd "$1" sh -c 'exec flight node run --interval 1 --config-dir /cfg >> /var/log/flight.log 2>&1'; }
+# n2 runs the previous release when one was given.
+node_bin() { if [ "$1" = n2 ] && [ -n "$OLD" ]; then echo flight-old; else echo flight; fi; }
+start_node() { dxd "$1" sh -c "exec $(node_bin "$1") node run --interval 1 --config-dir /cfg >> /var/log/flight.log 2>&1"; }
 stop_node() { dx "$1" pkill -9 -f "flight node run" || true; }
 
 echo "0. machines: an orchestrator, two nodes and a dashboard on a private network"
 mkdir "$BASE/ctx"
 cp "$FLIGHT" "$BASE/ctx/flight"
+cp "${OLD:-$FLIGHT}" "$BASE/ctx/flight-old"
 printf '#!/bin/sh\nexec sleep 3600\n' > "$BASE/ctx/claude"
+cp "$BASE/ctx/claude" "$BASE/ctx/codex"
 cat > "$BASE/ctx/Dockerfile" <<'DOCKER'
 FROM debian:12-slim
 RUN apt-get update -qq && apt-get install -y -qq tmux procps && rm -rf /var/lib/apt/lists/*
-COPY flight claude /usr/local/bin/
-RUN chmod 755 /usr/local/bin/flight /usr/local/bin/claude && mkdir -p /work
+COPY flight flight-old claude codex /usr/local/bin/
+RUN chmod 755 /usr/local/bin/flight /usr/local/bin/flight-old /usr/local/bin/claude /usr/local/bin/codex && mkdir -p /work
 DOCKER
 docker build -q -t "$IMG" "$BASE/ctx" >/dev/null
 docker network create "$NET" >/dev/null
@@ -82,7 +92,7 @@ start_orch
 for n in n1 n2; do
   bundle=$(dx orch flight orchestrator enrollment create --config-dir /cfg)
   # shellcheck disable=SC2086  # the bundle is several words
-  dx $n flight node join $bundle --name $n --config-dir /cfg >/dev/null || fail "$n join"
+  dx $n "$(node_bin $n)" node join $bundle --name $n --config-dir /cfg >/dev/null || fail "$n join"
   start_node $n
 done
 bundle=$(dx orch flight orchestrator enrollment create --config-dir /cfg)
@@ -106,6 +116,35 @@ for k in 0 1; do
 done
 wait_for "one session on each node" 30 sh -c "[ \"\$(docker exec $(c n1) sh -c 'tmux -L flight list-sessions 2>/dev/null | grep -vc ^flight-view || true')\" = 1 ] && [ \"\$(docker exec $(c n2) sh -c 'tmux -L flight list-sessions 2>/dev/null | grep -vc ^flight-view || true')\" = 1 ]"
 
+if [ -n "$OLD" ]; then
+  echo "2b. n2 runs the previous release: Claude worked above; Codex is refused as too old on n2 and works on n1"
+  dx n2 flight-old --version | grep -q '^flight ' || fail "n2 is not the previous release"
+  dx ui sh -c 'printf "version = 1\n[agents]\nenabled = [\"codex\"]\ndefault = \"codex\"\n[setup]\ncompleted = true\ndeclined = false\n" > /cfg/settings.toml'
+  dx ui tmux -L out kill-server || true
+  dx ui tmux -L out new-session -d -x 120 -y 36 -s s "flight ui run --refresh 1 --config-dir /cfg"
+  wait_screen 'n2'
+  for k in 1 0; do
+    dx ui tmux -L out send-keys -t s n
+    wait_screen 'New workspace'
+    dx ui tmux -L out send-keys -t s "cx$k" Up
+    i=0; while [ "$i" -lt "$k" ]; do dx ui tmux -L out send-keys -t s Right; i=$((i + 1)); done
+    dx ui tmux -L out send-keys -t s Tab Tab
+    dx ui tmux -L out send-keys -t s BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace BSpace /work Tab Tab Enter
+    if [ "$k" = 1 ]; then
+      wait_screen 'too old'
+      dx ui tmux -L out send-keys -t s Escape
+      wait_screen 'n2'
+    else
+      wait_screen "cx0 +idle|Created workspace cx0"
+    fi
+  done
+  [ "$(sessions n2)" = 1 ] || fail "the refused Codex request started something on the old node"
+  [ "$(sessions n1)" = 2 ] || fail "Codex was not started on the current node"
+  dx n1 sh -c 'tmux -L flight list-panes -a -F "#{session_name} #{pane_start_command}" | grep -q "^cx0 .*codex"' || fail "n1's cx0 does not run codex"
+  dx ui tmux -L out kill-server || true
+fi
+
+S1=$(sessions n1)
 echo "3. n2's network is cut: n2 is lost, n1 is unaffected, n2 returns by itself, its session survived"
 docker network disconnect "$NET" "$(c n2)"
 wait_for "n2 to leave Online" 60 not_online n2
@@ -118,7 +157,7 @@ wait_for "n2 Online again" 90 is n2 Online
 echo "4. a node process is killed and started again: the session survives and is picked up"
 stop_node n1
 wait_for "n1 to leave Online" 60 not_online n1
-[ "$(sessions n1)" = 1 ] || fail "n1's session did not survive the node"
+[ "$(sessions n1)" = "$S1" ] || fail "n1's session did not survive the node"
 start_node n1
 wait_for "n1 Online again" 60 is n1 Online
 
@@ -128,7 +167,7 @@ sleep 1
 start_orch
 wait_for "n1 Online after the orchestrator restart" 90 is n1 Online
 wait_for "n2 Online after the orchestrator restart" 90 is n2 Online
-[ "$(sessions n1)" = 1 ] && [ "$(sessions n2)" = 1 ] || fail "a session was lost with the orchestrator"
+[ "$(sessions n1)" = "$S1" ] && [ "$(sessions n2)" = 1 ] || fail "a session was lost with the orchestrator"
 
 echo "6. n2 is revoked: it is cut off at once, n1 is not, and n2's session keeps running"
 id=$(dx orch flight orchestrator trust list --config-dir /cfg | awk '/ n2$/ {print $2}')
