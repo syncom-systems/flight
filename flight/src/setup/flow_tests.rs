@@ -12,6 +12,7 @@ struct Pretend {
     platform: Platform,
     tools: HashSet<&'static str>,
     tmux: Option<&'static str>,
+    root: bool,
     ran: Vec<String>,
     /// What running `brew install tmux` does to the machine, and how it exits.
     install_works: bool,
@@ -24,6 +25,7 @@ impl Pretend {
             platform: Platform::MacOs,
             tools: tools.iter().copied().collect(),
             tmux,
+            root: false,
             ran: Vec::new(),
             install_works: true,
             exit: 0,
@@ -41,11 +43,18 @@ impl Machine for Pretend {
     fn tmux_version(&self) -> Option<String> {
         self.tmux.map(str::to_owned)
     }
+    fn is_root(&self) -> bool {
+        self.root
+    }
     fn run(&mut self, step: &Step) -> Result<i32, String> {
         self.ran.push(step.command_line());
         if self.exit == 0 && self.install_works {
             match step.command_line().as_str() {
-                "brew install tmux" => self.tmux = Some("tmux 3.5a"),
+                "brew install tmux"
+                | "apt-get install -y tmux"
+                | "sudo apt-get install -y tmux" => {
+                    self.tmux = Some("tmux 3.5a");
+                }
                 "brew install --cask claude-code" => {
                     self.tools.insert("claude");
                 }
@@ -240,12 +249,22 @@ fn a_settings_file_that_cannot_be_used_is_never_overwritten() {
 #[test]
 fn linux_apt_is_run_with_sudo_in_the_open() {
     let (st, dir) = store("apt");
-    let mut m = Pretend::mac(&["apt-get", "claude"], None);
+    let mut m = Pretend::mac(&["apt-get", "sudo", "claude"], None);
     m.platform = Platform::Linux;
-    let mut c = yes(1);
+    let mut c = yes(2);
     run(Mode::Asked, &mut m, &mut c, &st);
-    assert_eq!(m.ran, vec!["sudo apt-get install -y tmux"]);
+    assert_eq!(
+        m.ran,
+        vec!["sudo apt-get update", "sudo apt-get install -y tmux"]
+    );
     assert!(said(&c).contains("command: sudo apt-get install -y tmux"));
+    let (st2, dir2) = store("apt-root");
+    let mut r = Pretend::mac(&["apt-get", "claude"], None);
+    r.platform = Platform::Linux;
+    r.root = true;
+    run(Mode::Asked, &mut r, &mut yes(2), &st2);
+    assert_eq!(r.ran, vec!["apt-get update", "apt-get install -y tmux"]);
+    let _ = std::fs::remove_dir_all(dir2);
     let _ = std::fs::remove_dir_all(dir);
 }
 
