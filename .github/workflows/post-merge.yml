@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MIT
+#
+# Post-merge: the pre-merge gates (fmt, clippy, tests on Linux and macOS) on main after a
+# merge, because the merged result is not the commit the pull request was checked on. Public
+# repository, so these run on GitHub-hosted runners.
+name: post-merge
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    name: gates
+    uses: ./.github/workflows/pre-merge.yml

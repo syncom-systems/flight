@@ -14,7 +14,7 @@
 #
 # Third-party actions are pinned to a commit. No long-lived secret is used: attestations are
 # signed with the workflow's short-lived OIDC identity (Sigstore).
-name: Release
+name: release
 
 on:
   push:
@@ -70,7 +70,7 @@ jobs:
   gates:
     name: gates
     needs: verify
-    uses: ./.github/workflows/ci.yml
+    uses: ./.github/workflows/pre-merge.yml
 
   build:
     name: build (${{ matrix.target }})
