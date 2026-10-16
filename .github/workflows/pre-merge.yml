@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT
 #
-# Flight continuous integration. Cargo is the build authority today (Bazel is planned, not
-# set up). Every pull request, and every push to main, runs the same four checks:
+# Flight pre-merge checks. Cargo is the build authority today (Bazel is planned, not
+# set up). Every pull request runs these four checks; post-merge.yml runs them again on main
+# after the merge, and release.yml runs them on the tagged commit:
 #
 #   fmt                      cargo fmt --check
 #   clippy                   cargo clippy --workspace --all-targets -- -D warnings
@@ -14,13 +15,11 @@
 # (they use private sockets, never the default server) and a C compiler (a stand-in agent
 # binary); a test skips itself when its prerequisite is missing, so the install steps are
 # part of the gate, not optional.
-name: CI
+name: pre-merge
 
 on:
-  push:
-    branches: [main]
   pull_request:
-  # The release workflow runs the same four gates on the tagged commit.
+  # post-merge.yml and release.yml run the same four gates on main and on the tagged commit.
   workflow_call:
 
 # Cancel superseded runs on the same ref.
